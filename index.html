@@ -292,6 +292,17 @@ function compressImage(file, maxPx=1400, quality=0.7){
   });
 }
 
+function jobDate(iso){
+  if(!iso) return '';
+  const d = new Date(iso), now = new Date();
+  const days = Math.floor((now - d) / 86400000);
+  const t = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  if(days === 0 && d.getDate() === now.getDate()) return `Today ${t}`;
+  if(days <= 1) return `Yesterday ${t}`;
+  if(days < 7) return d.toLocaleDateString([], {weekday:'short'}) + ' ' + t;
+  return d.toLocaleDateString([], {month:'short', day:'numeric'});
+}
+
 function rid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 
 async function uploadDamagePhoto(file, itemId){
@@ -452,7 +463,7 @@ async function screenHome(){
 
   const card = j => `
     <button class="job" onclick="openJob('${j.id}')">
-      <div class="jn">${esc(j.job_number)}</div>
+      <div class="jn">${esc(j.job_number)} · ${esc(jobDate(j.created_at))}</div>
       <div class="jv">${esc(j.vehicle)}</div>
       <div class="jc">${esc(j.customer_name)}</div>
       ${badge(j.status)}
