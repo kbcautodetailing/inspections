@@ -113,6 +113,18 @@
   }
   .chip.on{background:var(--navy);border-color:var(--navy);color:#fff;}
   .chip:focus-visible{outline:3px solid var(--blue);outline-offset:2px;}
+  .chip.out{flex:1;justify-content:center;text-align:center;padding:13px 10px;min-height:48px;}
+  .chip.on.ok{background:var(--good);border-color:var(--good);}
+  .chip.on.bad{background:var(--poor);border-color:var(--poor);}
+  .row.prow{padding:13px 12px;}
+  .row.prow .chips{display:flex;gap:8px;}
+  .badge{
+    display:inline-block;font-size:11.5px;font-weight:800;padding:3px 8px;
+    border-radius:999px;margin-top:6px;letter-spacing:.02em;
+  }
+  .badge.pre{background:#fdf0d5;color:#8a6100;}
+  .badge.post{background:#dcecfa;color:#0f5c96;}
+  .badge.done{background:#e4ece4;color:#3d6b45;}
   .detail input.note{
     width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;margin-top:2px;
   }
@@ -329,34 +341,43 @@ async function screenHome(){
     .select('id, job_number, customer_name, vehicle, status, created_at')
     .order('created_at', { ascending:false }).limit(25);
 
+  const badge = s =>
+    s === 'awaiting_service' ? `<span class="badge post">Post-inspection due</span>`
+  : s === 'complete'         ? `<span class="badge done">Complete</span>`
+  :                            `<span class="badge pre">Pre-inspection in progress</span>`;
+
+  const card = j => `
+    <button class="job" onclick="openJob('${j.id}')">
+      <div class="jn">${esc(j.job_number)}</div>
+      <div class="jv">${esc(j.vehicle)}</div>
+      <div class="jc">${esc(j.customer_name)}</div>
+      ${badge(j.status)}
+    </button>`;
+
   const open = (jobs||[]).filter(j => j.status !== 'complete');
+  const done = (jobs||[]).filter(j => j.status === 'complete').slice(0,8);
+
   app.innerHTML = `
     <h2>Open jobs</h2>
     ${ open.length === 0
       ? `<p class="note">No open jobs. Start a new inspection below.</p>`
-      : `<div class="joblist">${open.map(j=>`
-          <button class="job" onclick="openJob('${j.id}')">
-            <div class="jn">${esc(j.job_number)}</div>
-            <div class="jv">${esc(j.vehicle)}</div>
-            <div class="jc">${esc(j.customer_name)}</div>
-          </button>`).join('')}</div>` }
-    ${ (jobs||[]).length > open.length
-      ? `<h2>Recent</h2><div class="joblist">${(jobs||[]).filter(j=>j.status==='complete').slice(0,8).map(j=>`
-          <button class="job" onclick="openJob('${j.id}')">
-            <div class="jn">${esc(j.job_number)}</div>
-            <div class="jv">${esc(j.vehicle)}</div>
-            <div class="jc">${esc(j.customer_name)}</div>
-          </button>`).join('')}</div>` : '' }`;
+      : `<div class="joblist">${open.map(card).join('')}</div>` }
+    ${ done.length
+      ? `<h2>Recent</h2><div class="joblist">${done.map(card).join('')}</div>` : '' }`;
 }
 
 async function openJob(id){
   const { data:job } = await sb.from('jobs').select('*').eq('id', id).single();
   if(!job) return;
   JOB = job;
-  const { data:insp } = await sb.from('inspections')
-    .select('*').eq('job_id', id).eq('phase','pre').maybeSingle();
-  if(insp){ INSPECTION = insp; await resumeInspection(); }
-  else { await startInspection(); }
+  const { data:insps } = await sb.from('inspections').select('*').eq('job_id', id);
+  const pre  = (insps||[]).find(i => i.phase === 'pre');
+  const post = (insps||[]).find(i => i.phase === 'post');
+
+  if(!pre){ await startInspection(); return; }
+  if(!pre.completed_at){ INSPECTION = pre; await resumeInspection(); return; }
+  if(post){ INSPECTION = post; await resumePost(); return; }
+  screenPostIntro(pre);
 }
 
 /* ============================================================
@@ -734,6 +755,367 @@ async function finishInspection(){
       <p class="note">${esc(JOB.vehicle)} — ${esc(JOB.customer_name)}</p>
       <p class="note">Take the 12 before photos in Fieldd. Damage photos and signature capture
       are coming in the next build — for now, note anything unusual on the job.</p>
+    </div>`;
+  setFooter(`<button class="btn primary" onclick="screenHome()">Back to jobs</button>`);
+  setProgress(null);
+}
+
+/* ============================================================
+   POST-INSPECTION — carry-forward
+   ============================================================ */
+
+let CARRIED = [];   // [{zone, pre:{condition,effort,codes,note}}]
+let POST = {};      // zone_item_id -> {outcome, codes:[], note, isNew}
+
+const OUTCOME_LABEL = {
+  resolved:'Resolved', still_present:'Still there', new_issue:'New issue'
+};
+
+async function screenPostIntro(pre){
+  setHeader('Post-inspection', JOB.job_number + ' · ' + JOB.vehicle, {back:true});
+  setProgress(null);
+  btnBack.onclick = screenHome;
+
+  const { data:flags } = await sb.from('flagged_from_pre')
+    .select('*').eq('job_id', JOB.id).order('sort_order');
+
+  const n = (flags||[]).length;
+  app.innerHTML = `
+    <div class="card">
+      <h3>Before you start</h3>
+      <p class="note">The pre-inspection flagged <strong>${n}</strong>
+        zone${n===1?'':'s'}. You'll only be asked about those — not all
+        ${ZONES.length}. Anything you find that wasn't flagged before gets added
+        as a new issue.</p>
+      <p class="note">Take the 12 after photos in Fieldd before you finish here.</p>
+    </div>`;
+  setFooter(`<button class="btn primary" id="startPost" onclick="startPost()">Start post-inspection</button>`);
+}
+
+async function startPost(){
+  const btn = document.getElementById('startPost');
+  if(btn){ btn.disabled = true; btn.textContent = 'Starting…'; }
+  const { data, error } = await withRetry(() => sb.from('inspections').insert({
+    job_id: JOB.id, phase:'post', tech_id: ME.id
+  }).select().single());
+  if(error){ app.innerHTML = banner('Could not start: ' + error.message); return; }
+  INSPECTION = data; POST = {};
+  await loadCarried();
+  screenPost();
+}
+
+async function resumePost(){
+  await loadCarried();
+  const { data:items } = await sb.from('inspection_items')
+    .select('*').eq('inspection_id', INSPECTION.id);
+  POST = {};
+  for(const it of (items||[])){
+    POST[it.zone_item_id] = {
+      outcome: it.outcome,
+      codes: it.defect_codes || [],
+      note: it.note || '',
+      isNew: it.outcome === 'new_issue' && !CARRIED.some(c => c.zone.id === it.zone_item_id)
+    };
+  }
+  screenPost();
+}
+
+async function loadCarried(){
+  const { data:flags } = await sb.from('flagged_from_pre')
+    .select('*').eq('job_id', JOB.id).order('sort_order');
+  CARRIED = (flags||[]).map(f => ({
+    zone: ZONES.find(z => z.id === f.zone_item_id) || {
+      id:f.zone_item_id, section:f.section, item_label:f.item_label, surface:f.surface
+    },
+    pre: { condition:f.pre_condition, effort:f.pre_effort,
+           codes:f.pre_defect_codes || [], note:f.pre_note }
+  })).filter(c => c.zone);
+}
+
+function postAnsweredCount(){
+  const carriedDone = CARRIED.filter(c => POST[c.zone.id] && POST[c.zone.id].outcome).length;
+  return carriedDone;
+}
+
+function screenPost(){
+  setHeader('Post-inspection', `${JOB.job_number} · ${postAnsweredCount()} of ${CARRIED.length} checked`, {back:true});
+  setProgress(CARRIED.length ? Math.round(postAnsweredCount()/CARRIED.length*100) : 100);
+  btnBack.onclick = screenHome;
+
+  const newOnes = Object.entries(POST)
+    .filter(([zid, v]) => v.isNew)
+    .map(([zid, v]) => ({ zone: ZONES.find(z => z.id === +zid), v }))
+    .filter(x => x.zone);
+
+  app.innerHTML = `
+    ${ CARRIED.length === 0
+      ? `<div class="card"><p class="note">The pre-inspection flagged nothing, so
+           there's nothing to re-check. Add any new issues you found below.</p></div>`
+      : `<div class="sect"><span>Flagged before service</span>
+           <span class="cnt">${postAnsweredCount()} of ${CARRIED.length}</span></div>
+         <div class="rows">${CARRIED.map(c => carriedRowHTML(c)).join('')}</div>` }
+
+    <div class="sect" style="margin-top:20px"><span>New issues</span>
+      <span class="cnt">${newOnes.length}</span></div>
+    <div class="rows">
+      ${ newOnes.length === 0
+        ? `<div class="row"><p class="note" style="margin:2px 0">Nothing added. If you
+             found damage that wasn't flagged before, add it here — the client needs to
+             know before handoff.</p></div>`
+        : newOnes.map(x => newIssueRowHTML(x.zone, x.v)).join('') }
+    </div>
+    <button class="btn ghost" onclick="screenAddIssue()">Add a new issue</button>`;
+
+  bindCarriedRows();
+  bindNewRows();
+  setFooter(`<button class="btn primary" id="postNext" onclick="screenPostSummary()"></button>`);
+  refreshPostBtn();
+}
+
+function carriedRowHTML(c){
+  const s = POST[c.zone.id] || {};
+  const showDetail = s.outcome === 'still_present';
+  return `
+  <div class="row prow ${s.outcome ? 'done':''}" data-zid="${c.zone.id}">
+    <div class="row-label" style="margin-bottom:8px">
+      ${esc(c.zone.item_label)}
+      <div class="cd" style="font-weight:600;margin-top:2px">
+        ${esc(c.zone.section)} · was ${esc(c.pre.condition||'')}${ c.pre.codes.length ? ' · ' + esc(c.pre.codes.join(' ')) : '' }
+      </div>
+      ${ c.pre.note ? `<div class="cd" style="font-weight:500">${esc(c.pre.note)}</div>` : '' }
+    </div>
+    <div class="chips" style="margin-bottom:0">
+      <button class="chip out ${s.outcome==='resolved'?'on ok':''}" data-out="resolved">Resolved</button>
+      <button class="chip out ${s.outcome==='still_present'?'on bad':''}" data-out="still_present">Still there</button>
+    </div>
+    <div class="detail ${showDetail?'':'hidden'}">
+      <div class="lbl">What's still there?</div>
+      <div class="chips codes">
+        ${CODES.map(cd=>`<button class="chip ${ (s.codes||[]).includes(cd.code)?'on':'' }" data-code="${cd.code}">${esc(cd.code)} ${esc(cd.label)}</button>`).join('')}
+      </div>
+      <input class="note" placeholder="What did you tell the client?" value="${esc(s.note||'')}">
+    </div>
+  </div>`;
+}
+
+function newIssueRowHTML(zone, s){
+  return `
+  <div class="row nrow done" data-zid="${zone.id}">
+    <div class="row-main">
+      <div class="row-label">${esc(zone.item_label)}
+        <div class="cd" style="font-weight:600;margin-top:2px">${esc(zone.section)}</div>
+      </div>
+      <button class="mark" data-remove="${zone.id}" aria-label="Remove">✕</button>
+    </div>
+    <div class="detail">
+      <div class="lbl">What is it?</div>
+      <div class="chips codes">
+        ${CODES.map(cd=>`<button class="chip ${ (s.codes||[]).includes(cd.code)?'on':'' }" data-code="${cd.code}">${esc(cd.code)} ${esc(cd.label)}</button>`).join('')}
+      </div>
+      <input class="note" placeholder="What did you tell the client?" value="${esc(s.note||'')}">
+    </div>
+  </div>`;
+}
+
+function bindCarriedRows(){
+  document.querySelectorAll('.row.prow').forEach(row=>{
+    const zid = +row.dataset.zid;
+    row.querySelectorAll('.chip.out').forEach(btn=>{
+      btn.onclick = () => {
+        const s = POST[zid] || { codes:[], note:'', isNew:false };
+        const v = btn.dataset.out;
+        s.outcome = (s.outcome === v) ? null : v;
+        if(s.outcome !== 'still_present') s.codes = [];
+        POST[zid] = s;
+        redrawCarried(row, zid);
+      };
+    });
+    wirePostDetail(row, zid);
+  });
+}
+
+function redrawCarried(row, zid){
+  const s = POST[zid] || {};
+  row.querySelectorAll('.chip.out').forEach(b=>{
+    const v = b.dataset.out;
+    b.classList.toggle('on', s.outcome === v);
+    b.classList.toggle('ok',  s.outcome === v && v === 'resolved');
+    b.classList.toggle('bad', s.outcome === v && v === 'still_present');
+  });
+  row.classList.toggle('done', !!s.outcome);
+  const det = row.querySelector('.detail');
+  const show = s.outcome === 'still_present';
+  det.classList.toggle('hidden', !show);
+  if(show){
+    det.querySelectorAll('.codes .chip').forEach(c=>
+      c.classList.toggle('on', (s.codes||[]).includes(c.dataset.code)));
+  }
+  setHeader('Post-inspection', `${JOB.job_number} · ${postAnsweredCount()} of ${CARRIED.length} checked`, {back:true});
+  setProgress(CARRIED.length ? Math.round(postAnsweredCount()/CARRIED.length*100) : 100);
+  refreshPostBtn();
+}
+
+function bindNewRows(){
+  document.querySelectorAll('.row.nrow').forEach(row=>{
+    const zid = +row.dataset.zid;
+    const rm = row.querySelector('[data-remove]');
+    if(rm) rm.onclick = () => { delete POST[zid]; screenPost(); };
+    wirePostDetail(row, zid);
+  });
+}
+
+function wirePostDetail(row, zid){
+  row.querySelectorAll('.codes .chip').forEach(chip=>{
+    chip.onclick = () => {
+      const s = POST[zid]; if(!s) return;
+      s.codes = s.codes || [];
+      const i = s.codes.indexOf(chip.dataset.code);
+      if(i>=0) s.codes.splice(i,1); else s.codes.push(chip.dataset.code);
+      chip.classList.toggle('on');
+    };
+  });
+  const note = row.querySelector('.note');
+  if(note) note.oninput = () => { if(POST[zid]) POST[zid].note = note.value; };
+}
+
+function refreshPostBtn(){
+  const btn = document.getElementById('postNext');
+  if(!btn) return;
+  const left = CARRIED.length - postAnsweredCount();
+  if(left > 0){ btn.disabled = true; btn.textContent = `${left} left to check`; }
+  else { btn.disabled = false; btn.textContent = 'Review and finish'; }
+}
+
+/* ---------- add a new issue ---------- */
+function screenAddIssue(){
+  setHeader('Add a new issue','Pick the zone', {back:true});
+  setProgress(null); setFooter(null);
+  btnBack.onclick = screenPost;
+
+  const bySection = {};
+  for(const z of ZONES){ (bySection[z.section] ||= []).push(z); }
+
+  app.innerHTML = `
+    <div class="card">
+      <p class="note">Only add a zone the client needs to be told about before
+        they take the car.</p>
+      <label class="f"><span>Zone</span>
+        <select id="newZone">
+          <option value="">Select…</option>
+          ${Object.entries(bySection).map(([sec, items])=>`
+            <optgroup label="${esc(sec)}">
+              ${items.filter(z => !POST[z.id]).map(z=>`<option value="${z.id}">${esc(z.item_label)}</option>`).join('')}
+            </optgroup>`).join('')}
+        </select></label>
+      <button class="btn primary" onclick="addIssue()">Add issue</button>
+    </div>`;
+}
+
+function addIssue(){
+  const zid = +document.getElementById('newZone').value;
+  if(!zid) return;
+  POST[zid] = { outcome:'new_issue', codes:[], note:'', isNew:true };
+  screenPost();
+}
+
+/* ---------- post summary ---------- */
+function screenPostSummary(){
+  setHeader('Post-inspection summary', JOB.job_number + ' · ' + JOB.vehicle, {back:true});
+  setProgress(100);
+  btnBack.onclick = screenPost;
+
+  let resolved=0, still=0;
+  const stillList=[], newList=[];
+  for(const c of CARRIED){
+    const s = POST[c.zone.id]; if(!s) continue;
+    if(s.outcome === 'resolved') resolved++;
+    if(s.outcome === 'still_present'){ still++; stillList.push({zone:c.zone, s}); }
+  }
+  for(const [zid, v] of Object.entries(POST)){
+    if(v.isNew){ const z = ZONES.find(z=>z.id === +zid); if(z) newList.push({zone:z, s:v}); }
+  }
+
+  const mustTell = stillList.length + newList.length;
+
+  app.innerHTML = `
+    <div class="tiles">
+      <div class="tile g"><b>${resolved}</b><span>Resolved</span></div>
+      <div class="tile a"><b>${still}</b><span>Still there</span></div>
+      <div class="tile p"><b>${newList.length}</b><span>New</span></div>
+    </div>
+
+    ${ mustTell > 0 ? `
+      <div class="banner err" style="font-weight:600">
+        Tell the client about ${mustTell} item${mustTell===1?'':'s'} before they take the car.
+      </div>` : `<div class="banner ok">Everything flagged was resolved. Nothing to raise at handoff.</div>` }
+
+    ${ stillList.length ? `<h2>Still there</h2>` + stillList.map(({zone,s})=>`
+        <div class="flagline">
+          <span class="dot average"></span>
+          <span style="flex:1">${esc(zone.section)} — ${esc(zone.item_label)}
+            ${ s.note ? `<br><span class="cd" style="font-weight:500">${esc(s.note)}</span>` : '' }</span>
+          <span class="cd">${ (s.codes||[]).join(' ') || '—' }</span>
+        </div>`).join('') : '' }
+
+    ${ newList.length ? `<h2>New issues</h2>` + newList.map(({zone,s})=>`
+        <div class="flagline">
+          <span class="dot poor"></span>
+          <span style="flex:1">${esc(zone.section)} — ${esc(zone.item_label)}
+            ${ s.note ? `<br><span class="cd" style="font-weight:500">${esc(s.note)}</span>` : '' }</span>
+          <span class="cd">${ (s.codes||[]).join(' ') || '—' }</span>
+        </div>`).join('') : '' }
+
+    <div class="card" style="margin-top:20px">
+      <h3>Handoff notes</h3>
+      <input class="note" id="postNote" placeholder="Anything else worth recording"
+             value="${esc(INSPECTION.notes||'')}"
+             style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px">
+    </div>`;
+
+  setFooter(`<button class="btn primary" id="finPost" onclick="finishPost()">Complete post-inspection</button>`);
+}
+
+async function finishPost(){
+  const btn = document.getElementById('finPost');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const rows = Object.entries(POST)
+    .filter(([zid, v]) => v.outcome)
+    .map(([zid, v]) => ({
+      inspection_id: INSPECTION.id,
+      zone_item_id: +zid,
+      outcome: v.outcome,
+      defect_codes: v.codes || [],
+      note: v.note || null,
+      not_applicable: false,
+      updated_at: new Date().toISOString()
+    }));
+
+  if(rows.length){
+    const up = await withRetry(() => sb.from('inspection_items')
+      .upsert(rows, { onConflict:'inspection_id,zone_item_id' }));
+    if(up.error){
+      alert('Could not save after a few tries — check your signal and tap Complete again.\n\n' + up.error.message);
+      btn.disabled=false; btn.textContent='Complete post-inspection'; return;
+    }
+  }
+
+  await withRetry(() => sb.from('inspections').update({
+    notes: document.getElementById('postNote').value || null,
+    completed_at: new Date().toISOString()
+  }).eq('id', INSPECTION.id));
+
+  await withRetry(() => sb.from('jobs').update({
+    status:'complete', updated_at:new Date().toISOString()
+  }).eq('id', JOB.id));
+
+  app.innerHTML = `
+    ${banner('Post-inspection saved.','ok')}
+    <div class="card">
+      <h3>${esc(JOB.job_number)}</h3>
+      <p class="note">${esc(JOB.vehicle)} — ${esc(JOB.customer_name)}</p>
+      <p class="note">Make sure the 12 after photos are in Fieldd. Client signature
+        and PDF export are coming in the next build.</p>
     </div>`;
   setFooter(`<button class="btn primary" onclick="screenHome()">Back to jobs</button>`);
   setProgress(null);
