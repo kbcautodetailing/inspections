@@ -234,6 +234,21 @@ function banner(msg, kind='err'){
   return `<div class="banner ${kind}">${esc(msg)}</div>`;
 }
 
+/* Mobile signal drops mid-request and Safari throws "Load failed" even when
+   the write already landed. Retry quietly before ever bothering the tech. */
+async function withRetry(fn, tries=3){
+  let lastErr;
+  for(let i=0;i<tries;i++){
+    try{
+      const res = await fn();
+      if(res && res.error){ lastErr = res.error; }
+      else return res;
+    } catch(e){ lastErr = e; }
+    if(i < tries-1) await new Promise(r=>setTimeout(r, 600*(i+1)));
+  }
+  return { error: lastErr };
+}
+
 /* ============================================================
    AUTH
    ============================================================ */
@@ -358,20 +373,12 @@ function screenNewJob(){
       <label class="f"><span>Phone</span><input id="f_phone" type="tel" inputmode="tel" autocomplete="off"></label>
       <label class="f"><span>Vehicle</span><input id="f_vehicle" placeholder="2019 Silver Tahoe" autocomplete="off"></label>
       <label class="f"><span>Plate or VIN</span><input id="f_plate" autocomplete="off"></label>
-      <label class="f"><span>Package</span>
+      <label class="f"><span>Service scope</span>
         <select id="f_package">
           <option value="">Select…</option>
-          <option>Classic Complete</option>
-          <option>Complete Reset</option>
-          <option>Complete Masterpiece</option>
-          <option>Classic Exterior</option>
-          <option>Exterior Reset</option>
-          <option>1 Stage Paint Correction</option>
-          <option>Classic Interior</option>
-          <option>Interior Reset</option>
-          <option>Interior Masterpiece</option>
-          <option>Ceramic Coating</option>
-          <option>Other</option>
+          <option>Exterior only</option>
+          <option>Interior only</option>
+          <option>Full — interior and exterior</option>
         </select></label>
       <label class="f"><span>Location</span>
         <select id="f_location">
@@ -392,7 +399,7 @@ async function createJob(e){
     return;
   }
   const btn = e.target; btn.disabled = true; btn.textContent = 'Creating…';
-  const { data, error } = await sb.from('jobs').insert({
+  const { data, error } = await withRetry(() => sb.from('jobs').insert({
     customer_name: name,
     customer_phone: document.getElementById('f_phone').value.trim() || null,
     vehicle,
@@ -400,7 +407,7 @@ async function createJob(e){
     package: document.getElementById('f_package').value || null,
     location: document.getElementById('f_location').value,
     created_by: ME.id
-  }).select().single();
+  }).select().single());
 
   if(error){
     document.getElementById('jobMsg').innerHTML = banner(error.message);
@@ -415,10 +422,10 @@ async function createJob(e){
    INSPECTION
    ============================================================ */
 async function startInspection(){
-  const { data, error } = await sb.from('inspections').insert({
+  const { data, error } = await withRetry(() => sb.from('inspections').insert({
     job_id: JOB.id, phase:'pre', tech_id: ME.id
-  }).select().single();
-  if(error){ app.innerHTML = banner(error.message); return; }
+  }).select().single());
+  if(error){ app.innerHTML = banner('Could not start inspection: ' + error.message); return; }
   INSPECTION = data; STATE = {}; SIDX = 0;
   screenSection();
 }
@@ -601,8 +608,8 @@ async function saveSection(){
       updated_at: new Date().toISOString()
     }));
   if(!rows.length) return { error:null };
-  return await sb.from('inspection_items')
-    .upsert(rows, { onConflict:'inspection_id,zone_item_id' });
+  return await withRetry(() => sb.from('inspection_items')
+    .upsert(rows, { onConflict:'inspection_id,zone_item_id' }));
 }
 
 async function prevSection(){ await saveSection(); SIDX--; screenSection(); }
@@ -616,7 +623,11 @@ async function nextSection(){
   const btn = document.getElementById('nextBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   const { error } = await saveSection();
-  if(error){ alert('Could not save: ' + error.message); btn.disabled=false; return; }
+  if(error){
+    alert('Could not save after a few tries — check your signal and tap Next again.\n\n' + error.message);
+    btn.disabled=false; btn.textContent = SIDX === SECTIONS.length-1 ? 'Finish inspection' : 'Next section';
+    return;
+  }
   if(SIDX === SECTIONS.length - 1){ screenSummary(); }
   else { SIDX++; screenSection(); }
 }
@@ -686,18 +697,21 @@ async function finishInspection(){
       updated_at: new Date().toISOString()
     }));
 
-  const up = await sb.from('inspection_items')
-    .upsert(allRows, { onConflict:'inspection_id,zone_item_id' });
-  if(up.error){ alert('Could not save: '+up.error.message); btn.disabled=false; return; }
+  const up = await withRetry(() => sb.from('inspection_items')
+    .upsert(allRows, { onConflict:'inspection_id,zone_item_id' }));
+  if(up.error){
+    alert('Could not save after a few tries — check your signal and tap Complete again.\n\n' + up.error.message);
+    btn.disabled=false; btn.textContent='Complete pre-inspection'; return;
+  }
 
-  await sb.from('inspections').update({
+  await withRetry(() => sb.from('inspections').update({
     notes: document.getElementById('overallNote').value || null,
     completed_at: new Date().toISOString()
-  }).eq('id', INSPECTION.id);
+  }).eq('id', INSPECTION.id));
 
-  await sb.from('jobs').update({
+  await withRetry(() => sb.from('jobs').update({
     status:'awaiting_service', updated_at:new Date().toISOString()
-  }).eq('id', JOB.id);
+  }).eq('id', JOB.id));
 
   app.innerHTML = `
     ${banner('Pre-inspection saved.','ok')}
