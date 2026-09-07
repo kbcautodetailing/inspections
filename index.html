@@ -126,12 +126,21 @@
   .badge.post{background:#dcecfa;color:#0f5c96;}
   .badge.done{background:#e4ece4;color:#3d6b45;}
 
-  .photobar{display:flex;align-items:center;gap:10px;margin-top:10px;}
+  .photobar{margin:12px 0;}
   .photobtn{
-    display:inline-block;padding:11px 14px;border:1.5px dashed var(--line);border-radius:9px;
-    background:#fff;font-size:14px;font-weight:700;color:var(--navy);min-height:44px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+    padding:14px;border-radius:10px;background:var(--poor);color:#fff;
+    font-size:15.5px;font-weight:800;letter-spacing:.01em;min-height:50px;cursor:pointer;
+    border:none;
   }
-  .photocount{font-size:13px;font-weight:600;color:var(--good);}
+  .photobtn:active{filter:brightness(.92);}
+  .photobar.has .photobtn{
+    background:#e9f6ed;color:#146b30;border:1.5px solid #bfe3cb;
+    justify-content:space-between;padding:12px 14px;font-size:14.5px;
+  }
+  .photobar.has .plabel::before{content:'\2713  ';}
+  .addmore{font-size:13px;font-weight:700;opacity:.75;}
+  .photobar:not(.has) .addmore{display:none;}
 
   .agreement{max-height:340px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
   .agsec{margin:14px 0;}
@@ -188,6 +197,9 @@
   .banner{padding:12px 14px;border-radius:10px;font-size:14.5px;margin:12px 0;}
   .banner.err{background:#fdeceb;color:#8f2015;border:1px solid #f3c3bd;}
   .banner.ok{background:#e9f6ed;color:#146b30;border:1px solid #bfe3cb;}
+  .banner.warn{background:#fdf4e3;color:#7a5600;border:1px solid #eed9ab;}
+  .nopic{font-size:11.5px;font-weight:800;color:var(--poor);}
+  .haspic{font-size:11.5px;font-weight:800;color:var(--good);}
 
   .loading{text-align:center;padding:48px 0;color:var(--ink-soft);}
 
@@ -626,14 +638,14 @@ function rowHTML(z){
       <div class="chips efforts">
         ${['minimal','standard','extended'].map(ef=>`<button class="chip ${s.effort===ef?'on':''}" data-effort="${ef}">${EFFORT_LABEL[ef]}</button>`).join('')}
       </div>
-      <input class="note" placeholder="Note (optional)" value="${esc(s.note||'')}">
-      <div class="photobar">
+      <div class="photobar ${ (s.photos||0) ? 'has':'' }">
         <label class="photobtn">
-          <span class="plabel">Add damage photo</span>
+          <span class="plabel">${ (s.photos||0) ? photoLabel(s.photos) : 'Add damage photo' }</span>
+          <span class="addmore">Add another</span>
           <input type="file" accept="image/*" capture="environment" class="photoin" hidden>
         </label>
-        <span class="photocount">${ (s.photos||0) ? `${s.photos} attached` : '' }</span>
       </div>
+      <input class="note" placeholder="Note (optional)" value="${esc(s.note||'')}">
     </div>
   </div>`;
 }
@@ -691,7 +703,7 @@ function wireDetail(row, zid){
 function wirePhoto(row, zid, store){
   const input = row.querySelector('.photoin');
   if(!input) return;
-  const countEl = row.querySelector('.photocount');
+  const bar = row.querySelector('.photobar');
   const plabel = row.querySelector('.plabel');
   input.onchange = async () => {
     const file = input.files && input.files[0];
@@ -717,13 +729,15 @@ function wirePhoto(row, zid, store){
       }
       await uploadDamagePhoto(file, itemId);
       s.photos = (s.photos||0) + 1;
-      countEl.textContent = `${s.photos} attached`;
+      bar.classList.add('has');
     } catch(e){
       alert('Photo did not upload: ' + (e.message||e));
     }
-    plabel.textContent = 'Add damage photo';
+    plabel.textContent = (s.photos||0) ? photoLabel(s.photos) : 'Add damage photo';
   };
 }
+
+function photoLabel(n){ return `${n} photo${n===1?'':'s'} attached`; }
 
 function redrawRow(row, zid){
   const s = STATE[zid] || {};
@@ -817,6 +831,8 @@ async function screenSummary(){
     }
   }
 
+  const noPhoto = flagged.filter(({s}) => !(s.photos||0)).length;
+
   app.innerHTML = `
     <div class="tiles">
       <div class="tile g"><b>${counts.good}</b><span>Good</span></div>
@@ -824,6 +840,11 @@ async function screenSummary(){
       <div class="tile p"><b>${counts.poor}</b><span>Poor</span></div>
     </div>
     <p class="note">${counts.na} marked not applicable · ${ZONES.length} zones total</p>
+
+    ${ noPhoto > 0 ? `<div class="banner warn">
+        <strong>${noPhoto} flagged item${noPhoto===1?'':'s'} ${noPhoto===1?'has':'have'} no photo.</strong>
+        Not required — but a photo is what settles the argument later. Go back if any of
+        these need one.</div>` : '' }
 
     <h2>Flagged for post-inspection</h2>
     ${ flagged.length === 0
@@ -833,7 +854,10 @@ async function screenSummary(){
           <span class="dot ${s.condition}"></span>
           <span style="flex:1">${esc(z.section)} — ${esc(z.item_label)}
             ${ s.note ? `<br><span class="cd" style="font-weight:500">${esc(s.note)}</span>` : '' }</span>
-          <span class="cd">${ (s.codes||[]).join(' ') || '—' }</span>
+          <span style="text-align:right">
+            <span class="cd">${ (s.codes||[]).join(' ') || '—' }</span><br>
+            <span class="${ (s.photos||0) ? 'haspic':'nopic' }">${ (s.photos||0) ? `${s.photos} photo${s.photos===1?'':'s'}` : 'no photo' }</span>
+          </span>
         </div>`).join('') }
 
     <div class="card" style="margin-top:20px">
@@ -1217,12 +1241,13 @@ function carriedRowHTML(c){
       <div class="chips codes">
         ${CODES.map(cd=>`<button class="chip ${ (s.codes||[]).includes(cd.code)?'on':'' }" data-code="${cd.code}">${esc(cd.code)} ${esc(cd.label)}</button>`).join('')}
       </div>
-      <input class="note" placeholder="What did you tell the client?" value="${esc(s.note||'')}">
-      <div class="photobar">
-        <label class="photobtn"><span class="plabel">Add damage photo</span>
+      <div class="photobar ${ (s.photos||0) ? 'has':'' }">
+        <label class="photobtn">
+          <span class="plabel">${ (s.photos||0) ? photoLabel(s.photos) : 'Add damage photo' }</span>
+          <span class="addmore">Add another</span>
           <input type="file" accept="image/*" capture="environment" class="photoin" hidden></label>
-        <span class="photocount">${ (s.photos||0) ? `${s.photos} attached` : '' }</span>
       </div>
+      <input class="note" placeholder="What did you tell the client?" value="${esc(s.note||'')}">
     </div>
   </div>`;
 }
@@ -1241,12 +1266,13 @@ function newIssueRowHTML(zone, s){
       <div class="chips codes">
         ${CODES.map(cd=>`<button class="chip ${ (s.codes||[]).includes(cd.code)?'on':'' }" data-code="${cd.code}">${esc(cd.code)} ${esc(cd.label)}</button>`).join('')}
       </div>
-      <input class="note" placeholder="What did you tell the client?" value="${esc(s.note||'')}">
-      <div class="photobar">
-        <label class="photobtn"><span class="plabel">Add damage photo</span>
+      <div class="photobar ${ (s.photos||0) ? 'has':'' }">
+        <label class="photobtn">
+          <span class="plabel">${ (s.photos||0) ? photoLabel(s.photos) : 'Add damage photo' }</span>
+          <span class="addmore">Add another</span>
           <input type="file" accept="image/*" capture="environment" class="photoin" hidden></label>
-        <span class="photocount">${ (s.photos||0) ? `${s.photos} attached` : '' }</span>
       </div>
+      <input class="note" placeholder="What did you tell the client?" value="${esc(s.note||'')}">
     </div>
   </div>`;
 }
@@ -1371,6 +1397,7 @@ function screenPostSummary(){
   }
 
   const mustTell = stillList.length + newList.length;
+  const postNoPhoto = [...stillList, ...newList].filter(x => !(x.s.photos||0)).length;
 
   app.innerHTML = `
     <div class="tiles">
@@ -1383,6 +1410,10 @@ function screenPostSummary(){
       <div class="banner err" style="font-weight:600">
         Tell the client about ${mustTell} item${mustTell===1?'':'s'} before they take the car.
       </div>` : `<div class="banner ok">Everything flagged was resolved. Nothing to raise at handoff.</div>` }
+
+    ${ postNoPhoto > 0 ? `<div class="banner warn">
+        <strong>${postNoPhoto} of those ${postNoPhoto===1?'has':'have'} no photo.</strong>
+        A new issue without a photo is hard to defend if the client disputes it.</div>` : '' }
 
     ${ stillList.length ? `<h2>Still there</h2>` + stillList.map(({zone,s})=>`
         <div class="flagline">
