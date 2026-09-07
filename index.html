@@ -475,11 +475,27 @@ function screenSection(){
 
   setFooter(`
     ${ SIDX>0 ? `<button class="btn ghost" onclick="prevSection()">Previous</button>` : '' }
-    <button class="btn primary" id="nextBtn" onclick="nextSection()">
-      ${ SIDX === SECTIONS.length-1 ? 'Finish inspection' : 'Next section' }
-    </button>`);
+    <button class="btn primary" id="nextBtn" onclick="nextSection()"></button>`);
 
   bindRows();
+  refreshNextBtn();
+}
+
+/* Next stays locked until every zone in the section has an answer.
+   N/A counts as an answer — that is the escape hatch, not a blank. */
+function refreshNextBtn(){
+  const btn = document.getElementById('nextBtn');
+  if(!btn) return;
+  const sec = SECTIONS[SIDX];
+  const left = sec.items.length - sectionDoneCount(sec);
+  const last = SIDX === SECTIONS.length - 1;
+  if(left > 0){
+    btn.disabled = true;
+    btn.textContent = `${left} left to mark`;
+  } else {
+    btn.disabled = false;
+    btn.textContent = last ? 'Finish inspection' : 'Next section';
+  }
 }
 
 function rowHTML(z){
@@ -576,6 +592,7 @@ function redrawRow(row, zid){
   document.getElementById('secCnt').textContent =
     `${sectionDoneCount(SECTIONS[SIDX])} of ${SECTIONS[SIDX].items.length}`;
   setProgress(overallProgress());
+  refreshNextBtn();
 }
 
 function markSectionGood(){
@@ -616,16 +633,13 @@ async function prevSection(){ await saveSection(); SIDX--; screenSection(); }
 
 async function nextSection(){
   const sec = SECTIONS[SIDX];
-  const missing = sec.items.length - sectionDoneCount(sec);
-  if(missing > 0){
-    if(!confirm(`${missing} item${missing>1?'s':''} in this section ${missing>1?'are':'is'} unmarked. Continue anyway?`)) return;
-  }
+  if(sectionDoneCount(sec) < sec.items.length) return;   // guard; button is disabled anyway
   const btn = document.getElementById('nextBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   const { error } = await saveSection();
   if(error){
     alert('Could not save after a few tries — check your signal and tap Next again.\n\n' + error.message);
-    btn.disabled=false; btn.textContent = SIDX === SECTIONS.length-1 ? 'Finish inspection' : 'Next section';
+    refreshNextBtn();
     return;
   }
   if(SIDX === SECTIONS.length - 1){ screenSummary(); }
