@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B3A7A">
+<title>KBC Inspections</title>
+<link rel="apple-touch-icon" href="logo.png">
+<style>
+  :root{
+    --paper:#f4f5f7;
+    --card:#ffffff;
+    --ink:#14181c;
+    --ink-soft:#5a636c;
+    --line:#d7dbe0;
+    --navy:#1b3a7a;
+    --blue:#0b8fd6;
+    --good:#1a8a3c;
+    --avg:#d99400;
+    --poor:#bd2a1d;
+    --na:#7b848d;
+    --tap:52px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:17px; line-height:1.4;
+    padding-bottom:env(safe-area-inset-bottom);
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit;}
+  input,select{font-family:inherit;font-size:17px;}
+  .hidden{display:none !important;}
+
+  /* ---------- shell ---------- */
+  .wrap{max-width:640px;margin:0 auto;padding:0 14px 120px;}
+  .topbar{
+    position:sticky;top:0;z-index:40;background:var(--navy);color:#fff;
+    padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+  }
+  .topbar-inner{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:12px;}
+  .topbar h1{font-size:16px;margin:0;font-weight:700;letter-spacing:-.2px;flex:1;}
+  .topbar .sub{font-size:12.5px;opacity:.82;font-weight:500;margin-top:1px;}
+  .iconbtn{
+    color:#fff;font-size:14px;font-weight:600;padding:8px 10px;border-radius:8px;
+    background:rgba(255,255,255,.14);
+  }
+
+  /* ---------- progress ---------- */
+  .prog{height:5px;background:rgba(0,0,0,.14);}
+  .prog span{display:block;height:100%;background:var(--blue);transition:width .25s ease;}
+
+  /* ---------- cards & type ---------- */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0;}
+  h2{font-size:21px;margin:22px 0 6px;letter-spacing:-.3px;}
+  h3{font-size:15px;margin:0 0 10px;color:var(--ink-soft);font-weight:600;}
+  p.note{color:var(--ink-soft);font-size:14.5px;margin:6px 0;}
+
+  /* ---------- forms ---------- */
+  label.f{display:block;margin:14px 0 0;}
+  label.f span{display:block;font-size:13.5px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
+  label.f input, label.f select{
+    width:100%;padding:13px 12px;border:1px solid var(--line);border-radius:9px;
+    background:#fff;color:var(--ink);
+  }
+  label.f input:focus, label.f select:focus{outline:2px solid var(--blue);outline-offset:1px;border-color:var(--blue);}
+
+  .btn{
+    display:block;width:100%;text-align:center;padding:16px;border-radius:11px;
+    font-weight:700;font-size:17px;margin-top:14px;min-height:var(--tap);
+  }
+  .btn.primary{background:var(--navy);color:#fff;}
+  .btn.blue{background:var(--blue);color:#fff;}
+  .btn.ghost{background:#fff;color:var(--navy);border:1.5px solid var(--line);}
+  .btn:disabled{opacity:.45;}
+  .btn:focus-visible{outline:3px solid var(--blue);outline-offset:2px;}
+
+  /* ---------- section header ---------- */
+  .sect{
+    background:var(--navy);color:#fff;padding:11px 14px;border-radius:10px;
+    font-weight:700;font-size:16px;margin:18px 0 0;display:flex;justify-content:space-between;gap:10px;
+  }
+  .sect .cnt{font-weight:600;opacity:.8;font-size:13.5px;white-space:nowrap;}
+
+  /* ---------- inspection rows ---------- */
+  .rows{background:#fff;border:1px solid var(--line);border-top:none;border-radius:0 0 12px 12px;overflow:hidden;}
+  .row{border-top:1px solid var(--line);padding:11px 12px;}
+  .row:first-child{border-top:none;}
+  .row.done{background:#fbfcfd;}
+  .row-main{display:flex;align-items:center;gap:10px;}
+  .row-label{flex:1;font-size:16px;line-height:1.25;font-weight:500;}
+  .marks{display:flex;gap:6px;flex-shrink:0;}
+  .mark{
+    width:42px;height:44px;border-radius:9px;border:2px solid var(--line);
+    background:#fff;font-weight:800;font-size:15px;color:var(--ink-soft);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .mark[data-v="good"].on{background:var(--good);border-color:var(--good);color:#fff;}
+  .mark[data-v="average"].on{background:var(--avg);border-color:var(--avg);color:#fff;}
+  .mark[data-v="poor"].on{background:var(--poor);border-color:var(--poor);color:#fff;}
+  .mark[data-v="na"]{width:36px;font-size:12.5px;}
+  .mark[data-v="na"].on{background:var(--na);border-color:var(--na);color:#fff;}
+  .mark:focus-visible{outline:3px solid var(--blue);outline-offset:2px;}
+
+  .detail{margin-top:11px;padding-top:11px;border-top:1px dashed var(--line);}
+  .detail .lbl{font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:6px;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px;}
+  .chip{
+    padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;background:#fff;
+    font-size:14px;font-weight:600;min-height:40px;
+  }
+  .chip.on{background:var(--navy);border-color:var(--navy);color:#fff;}
+  .chip:focus-visible{outline:3px solid var(--blue);outline-offset:2px;}
+  .detail input.note{
+    width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;margin-top:2px;
+  }
+
+  /* ---------- sticky footer ---------- */
+  .footbar{
+    position:fixed;left:0;right:0;bottom:0;z-index:50;background:rgba(244,245,247,.97);
+    border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    backdrop-filter:blur(8px);
+  }
+  .footbar-inner{max-width:640px;margin:0 auto;display:flex;gap:10px;}
+  .footbar .btn{margin-top:0;flex:1;}
+
+  /* ---------- job list ---------- */
+  .joblist{margin-top:6px;}
+  .job{
+    display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);
+    border-radius:11px;padding:14px;margin-bottom:10px;
+  }
+  .job .jn{font-size:12.5px;font-weight:700;color:var(--blue);letter-spacing:.02em;}
+  .job .jv{font-size:17px;font-weight:600;margin-top:2px;}
+  .job .jc{font-size:14px;color:var(--ink-soft);margin-top:1px;}
+
+  /* ---------- summary tiles ---------- */
+  .tiles{display:flex;gap:10px;margin:16px 0;}
+  .tile{flex:1;border-radius:11px;padding:14px 10px;text-align:center;color:#fff;}
+  .tile b{display:block;font-size:30px;font-weight:800;line-height:1;}
+  .tile span{font-size:12.5px;font-weight:600;opacity:.92;}
+  .tile.g{background:var(--good);} .tile.a{background:var(--avg);} .tile.p{background:var(--poor);}
+
+  .flagline{
+    display:flex;gap:9px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line);font-size:15px;
+  }
+  .flagline .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;position:relative;top:1px;}
+  .flagline .dot.average{background:var(--avg);} .flagline .dot.poor{background:var(--poor);}
+  .flagline .cd{font-size:12.5px;font-weight:700;color:var(--ink-soft);}
+
+  .banner{padding:12px 14px;border-radius:10px;font-size:14.5px;margin:12px 0;}
+  .banner.err{background:#fdeceb;color:#8f2015;border:1px solid #f3c3bd;}
+  .banner.ok{background:#e9f6ed;color:#146b30;border:1px solid #bfe3cb;}
+
+  .loading{text-align:center;padding:48px 0;color:var(--ink-soft);}
+
+  @media (prefers-reduced-motion:reduce){*{transition:none !important;}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div style="flex:1">
+      <h1 id="tbTitle">KBC Inspections</h1>
+      <div class="sub" id="tbSub"></div>
+    </div>
+    <button class="iconbtn hidden" id="btnBack">Back</button>
+    <button class="iconbtn hidden" id="btnOut">Sign out</button>
+  </div>
+</div>
+<div class="prog hidden" id="prog"><span style="width:0%"></span></div>
+
+<div class="wrap" id="app">
+  <div class="loading">Loading…</div>
+</div>
+
+<div class="footbar hidden" id="footbar"><div class="footbar-inner" id="footbarInner"></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ============================================================
+   KBC Auto Detailing — Pre-Inspection
+   ============================================================ */
+
+const SUPABASE_URL = 'https://vlgbwuxuiccfufknibde.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_-Mtd5ku4xeTrJx_jaKz5Nw_wAbbsyr0';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const app      = document.getElementById('app');
+const footbar  = document.getElementById('footbar');
+const footIn   = document.getElementById('footbarInner');
+const tbTitle  = document.getElementById('tbTitle');
+const tbSub    = document.getElementById('tbSub');
+const btnBack  = document.getElementById('btnBack');
+const btnOut   = document.getElementById('btnOut');
+const prog     = document.getElementById('prog');
+
+let ME = null;          // profile row
+let ZONES = [];         // all zone_items
+let CODES = [];         // defect codes
+let JOB = null;         // active job
+let INSPECTION = null;  // active inspection row
+let SECTIONS = [];      // [{surface, section, optional, items:[]}]
+let SIDX = 0;           // current section index
+let STATE = {};         // zone_item_id -> {condition, effort, na, codes:[], note}
+
+const EFFORT_DEFAULT = { average:'standard', poor:'extended' };
+const EFFORT_LABEL   = { minimal:'Minimal', standard:'Standard', extended:'Extended' };
+
+/* ---------- helpers ---------- */
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function setHeader(title, sub, opts={}){
+  tbTitle.textContent = title;
+  tbSub.textContent = sub || '';
+  btnBack.classList.toggle('hidden', !opts.back);
+  btnOut.classList.toggle('hidden', !opts.out);
+}
+function setFooter(html){
+  if(!html){ footbar.classList.add('hidden'); footIn.innerHTML=''; return; }
+  footIn.innerHTML = html; footbar.classList.remove('hidden');
+}
+function setProgress(pct){
+  if(pct === null){ prog.classList.add('hidden'); return; }
+  prog.classList.remove('hidden');
+  prog.firstElementChild.style.width = pct + '%';
+}
+function banner(msg, kind='err'){
+  return `<div class="banner ${kind}">${esc(msg)}</div>`;
+}
+
+/* ============================================================
+   AUTH
+   ============================================================ */
+async function boot(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ return screenLogin(); }
+  const { data:profile, error } = await sb
+    .from('profiles').select('*').eq('id', session.user.id).single();
+  if(error || !profile){
+    app.innerHTML = banner('Signed in, but no profile found. Ask the admin to set up your account.');
+    setFooter(`<button class="btn ghost" onclick="signOut()">Sign out</button>`);
+    return;
+  }
+  ME = profile;
+  await loadReference();
+  screenHome();
+}
+
+async function loadReference(){
+  const [z, c] = await Promise.all([
+    sb.from('zone_items').select('*').eq('active', true).order('sort_order'),
+    sb.from('defect_codes').select('*').order('sort_order')
+  ]);
+  ZONES = z.data || [];
+  CODES = c.data || [];
+  // group into ordered sections
+  SECTIONS = [];
+  let cur = null;
+  for(const item of ZONES){
+    if(!cur || cur.section !== item.section || cur.surface !== item.surface){
+      cur = { surface:item.surface, section:item.section, optional:item.optional, items:[] };
+      SECTIONS.push(cur);
+    }
+    cur.items.push(item);
+  }
+}
+
+function screenLogin(){
+  setHeader('KBC Inspections','Sign in to continue');
+  setProgress(null); setFooter(null);
+  app.innerHTML = `
+    <div class="card" style="margin-top:24px">
+      <h3>Sign in</h3>
+      <div id="loginMsg"></div>
+      <label class="f"><span>Email</span><input id="email" type="email" autocomplete="username" inputmode="email"></label>
+      <label class="f"><span>Password</span><input id="pw" type="password" autocomplete="current-password"></label>
+      <button class="btn primary" id="doLogin">Sign in</button>
+    </div>`;
+  document.getElementById('doLogin').onclick = async (e) => {
+    const btn = e.target; btn.disabled = true; btn.textContent = 'Signing in…';
+    const { error } = await sb.auth.signInWithPassword({
+      email: document.getElementById('email').value.trim(),
+      password: document.getElementById('pw').value
+    });
+    if(error){
+      document.getElementById('loginMsg').innerHTML = banner(error.message);
+      btn.disabled = false; btn.textContent = 'Sign in';
+    } else { location.reload(); }
+  };
+  document.getElementById('pw').addEventListener('keydown', ev=>{
+    if(ev.key==='Enter') document.getElementById('doLogin').click();
+  });
+}
+
+async function signOut(){ await sb.auth.signOut(); location.reload(); }
+btnOut.onclick = signOut;
+
+/* ============================================================
+   HOME
+   ============================================================ */
+async function screenHome(){
+  setHeader('KBC Inspections', ME.full_name + (ME.role==='admin' ? ' · Admin' : ''), {out:true});
+  setProgress(null);
+  app.innerHTML = `<div class="loading">Loading jobs…</div>`;
+  setFooter(`<button class="btn primary" onclick="screenNewJob()">Start new inspection</button>`);
+
+  const { data:jobs } = await sb.from('jobs')
+    .select('id, job_number, customer_name, vehicle, status, created_at')
+    .order('created_at', { ascending:false }).limit(25);
+
+  const open = (jobs||[]).filter(j => j.status !== 'complete');
+  app.innerHTML = `
+    <h2>Open jobs</h2>
+    ${ open.length === 0
+      ? `<p class="note">No open jobs. Start a new inspection below.</p>`
+      : `<div class="joblist">${open.map(j=>`
+          <button class="job" onclick="openJob('${j.id}')">
+            <div class="jn">${esc(j.job_number)}</div>
+            <div class="jv">${esc(j.vehicle)}</div>
+            <div class="jc">${esc(j.customer_name)}</div>
+          </button>`).join('')}</div>` }
+    ${ (jobs||[]).length > open.length
+      ? `<h2>Recent</h2><div class="joblist">${(jobs||[]).filter(j=>j.status==='complete').slice(0,8).map(j=>`
+          <button class="job" onclick="openJob('${j.id}')">
+            <div class="jn">${esc(j.job_number)}</div>
+            <div class="jv">${esc(j.vehicle)}</div>
+            <div class="jc">${esc(j.customer_name)}</div>
+          </button>`).join('')}</div>` : '' }`;
+}
+
+async function openJob(id){
+  const { data:job } = await sb.from('jobs').select('*').eq('id', id).single();
+  if(!job) return;
+  JOB = job;
+  const { data:insp } = await sb.from('inspections')
+    .select('*').eq('job_id', id).eq('phase','pre').maybeSingle();
+  if(insp){ INSPECTION = insp; await resumeInspection(); }
+  else { await startInspection(); }
+}
+
+/* ============================================================
+   NEW JOB
+   ============================================================ */
+function screenNewJob(){
+  setHeader('New inspection','Client and vehicle', {back:true});
+  setProgress(null); setFooter(null);
+  btnBack.onclick = screenHome;
+  app.innerHTML = `
+    <div class="card">
+      <div id="jobMsg"></div>
+      <label class="f"><span>Customer name</span><input id="f_name" autocomplete="off"></label>
+      <label class="f"><span>Phone</span><input id="f_phone" type="tel" inputmode="tel" autocomplete="off"></label>
+      <label class="f"><span>Vehicle</span><input id="f_vehicle" placeholder="2019 Silver Tahoe" autocomplete="off"></label>
+      <label class="f"><span>Plate or VIN</span><input id="f_plate" autocomplete="off"></label>
+      <label class="f"><span>Package</span>
+        <select id="f_package">
+          <option value="">Select…</option>
+          <option>Classic Complete</option>
+          <option>Complete Reset</option>
+          <option>Complete Masterpiece</option>
+          <option>Classic Exterior</option>
+          <option>Exterior Reset</option>
+          <option>1 Stage Paint Correction</option>
+          <option>Classic Interior</option>
+          <option>Interior Reset</option>
+          <option>Interior Masterpiece</option>
+          <option>Ceramic Coating</option>
+          <option>Other</option>
+        </select></label>
+      <label class="f"><span>Location</span>
+        <select id="f_location">
+          <option>Mobile — customer site</option>
+          <option>Shop</option>
+        </select></label>
+      <button class="btn primary" id="doCreate">Create job and start</button>
+    </div>`;
+  document.getElementById('doCreate').onclick = createJob;
+}
+
+async function createJob(e){
+  const name = document.getElementById('f_name').value.trim();
+  const vehicle = document.getElementById('f_vehicle').value.trim();
+  if(!name || !vehicle){
+    document.getElementById('jobMsg').innerHTML =
+      banner('Customer name and vehicle are both required.');
+    return;
+  }
+  const btn = e.target; btn.disabled = true; btn.textContent = 'Creating…';
+  const { data, error } = await sb.from('jobs').insert({
+    customer_name: name,
+    customer_phone: document.getElementById('f_phone').value.trim() || null,
+    vehicle,
+    plate_vin: document.getElementById('f_plate').value.trim() || null,
+    package: document.getElementById('f_package').value || null,
+    location: document.getElementById('f_location').value,
+    created_by: ME.id
+  }).select().single();
+
+  if(error){
+    document.getElementById('jobMsg').innerHTML = banner(error.message);
+    btn.disabled = false; btn.textContent = 'Create job and start';
+    return;
+  }
+  JOB = data;
+  await startInspection();
+}
+
+/* ============================================================
+   INSPECTION
+   ============================================================ */
+async function startInspection(){
+  const { data, error } = await sb.from('inspections').insert({
+    job_id: JOB.id, phase:'pre', tech_id: ME.id
+  }).select().single();
+  if(error){ app.innerHTML = banner(error.message); return; }
+  INSPECTION = data; STATE = {}; SIDX = 0;
+  screenSection();
+}
+
+async function resumeInspection(){
+  const { data:items } = await sb.from('inspection_items')
+    .select('*').eq('inspection_id', INSPECTION.id);
+  STATE = {};
+  for(const it of (items||[])){
+    STATE[it.zone_item_id] = {
+      condition: it.condition, effort: it.effort,
+      na: it.not_applicable, codes: it.defect_codes || [], note: it.note || ''
+    };
+  }
+  SIDX = 0;
+  for(let i=0;i<SECTIONS.length;i++){
+    if(SECTIONS[i].items.some(z => !STATE[z.id])){ SIDX = i; break; }
+    SIDX = i;
+  }
+  screenSection();
+}
+
+function sectionDoneCount(sec){
+  return sec.items.filter(z => STATE[z.id] && (STATE[z.id].condition || STATE[z.id].na)).length;
+}
+function overallProgress(){
+  const done = ZONES.filter(z => STATE[z.id] && (STATE[z.id].condition || STATE[z.id].na)).length;
+  return Math.round(done / ZONES.length * 100);
+}
+
+function screenSection(){
+  const sec = SECTIONS[SIDX];
+  setHeader(sec.section, `${JOB.job_number} · ${sec.surface === 'exterior' ? 'Exterior':'Interior'} · Section ${SIDX+1} of ${SECTIONS.length}`, {back:true});
+  setProgress(overallProgress());
+  btnBack.onclick = () => { if(SIDX>0){ SIDX--; screenSection(); } else screenHome(); };
+
+  app.innerHTML = `
+    <div class="sect">
+      <span>${esc(sec.section)}</span>
+      <span class="cnt" id="secCnt">${sectionDoneCount(sec)} of ${sec.items.length}</span>
+    </div>
+    <div class="rows" id="rows">
+      ${sec.items.map(z => rowHTML(z)).join('')}
+    </div>
+    ${ sec.optional ? `<button class="btn ghost" onclick="markSectionNA()">Not equipped — skip this section</button>` : '' }
+    <button class="btn ghost" onclick="markSectionGood()">Mark all remaining as Good</button>`;
+
+  setFooter(`
+    ${ SIDX>0 ? `<button class="btn ghost" onclick="prevSection()">Previous</button>` : '' }
+    <button class="btn primary" id="nextBtn" onclick="nextSection()">
+      ${ SIDX === SECTIONS.length-1 ? 'Finish inspection' : 'Next section' }
+    </button>`);
+
+  bindRows();
+}
+
+function rowHTML(z){
+  const s = STATE[z.id] || {};
+  const showDetail = s.condition === 'average' || s.condition === 'poor';
+  return `
+  <div class="row ${ (s.condition||s.na) ? 'done':'' }" data-zid="${z.id}">
+    <div class="row-main">
+      <div class="row-label">${esc(z.item_label)}</div>
+      <div class="marks">
+        <button class="mark ${s.condition==='good'?'on':''}"    data-v="good"    aria-label="Good">G</button>
+        <button class="mark ${s.condition==='average'?'on':''}" data-v="average" aria-label="Average">A</button>
+        <button class="mark ${s.condition==='poor'?'on':''}"    data-v="poor"    aria-label="Poor">P</button>
+        <button class="mark ${s.na?'on':''}"                    data-v="na"      aria-label="Not applicable">N/A</button>
+      </div>
+    </div>
+    <div class="detail ${showDetail?'':'hidden'}">
+      <div class="lbl">What is it?</div>
+      <div class="chips codes">
+        ${CODES.map(c=>`<button class="chip ${ (s.codes||[]).includes(c.code)?'on':'' }" data-code="${c.code}">${esc(c.code)} ${esc(c.label)}</button>`).join('')}
+      </div>
+      <div class="lbl">Work needed</div>
+      <div class="chips efforts">
+        ${['minimal','standard','extended'].map(ef=>`<button class="chip ${s.effort===ef?'on':''}" data-effort="${ef}">${EFFORT_LABEL[ef]}</button>`).join('')}
+      </div>
+      <input class="note" placeholder="Note (optional)" value="${esc(s.note||'')}">
+    </div>
+  </div>`;
+}
+
+function bindRows(){
+  document.querySelectorAll('.row').forEach(row=>{
+    const zid = +row.dataset.zid;
+    row.querySelectorAll('.mark').forEach(btn=>{
+      btn.onclick = () => {
+        const v = btn.dataset.v;
+        const s = STATE[zid] || { codes:[], note:'' };
+        if(v === 'na'){
+          s.na = !s.na;
+          if(s.na){ s.condition = null; s.effort = null; s.codes = []; }
+        } else {
+          s.na = false;
+          s.condition = (s.condition === v) ? null : v;
+          s.effort = s.condition ? (s.effort || EFFORT_DEFAULT[s.condition] || null) : null;
+          if(s.condition === 'good' || !s.condition) s.codes = [];
+        }
+        STATE[zid] = s;
+        redrawRow(row, zid);
+      };
+    });
+    wireDetail(row, zid);
+  });
+}
+
+function wireDetail(row, zid){
+  row.querySelectorAll('.codes .chip').forEach(chip=>{
+    chip.onclick = () => {
+      const s = STATE[zid]; if(!s) return;
+      const code = chip.dataset.code;
+      s.codes = s.codes || [];
+      const i = s.codes.indexOf(code);
+      if(i >= 0) s.codes.splice(i,1); else s.codes.push(code);
+      chip.classList.toggle('on');
+    };
+  });
+  row.querySelectorAll('.efforts .chip').forEach(chip=>{
+    chip.onclick = () => {
+      const s = STATE[zid]; if(!s) return;
+      s.effort = chip.dataset.effort;
+      row.querySelectorAll('.efforts .chip').forEach(c=>c.classList.remove('on'));
+      chip.classList.add('on');
+    };
+  });
+  const note = row.querySelector('.note');
+  if(note) note.oninput = () => { if(STATE[zid]) STATE[zid].note = note.value; };
+}
+
+function redrawRow(row, zid){
+  const s = STATE[zid] || {};
+  row.querySelectorAll('.mark').forEach(b=>{
+    const v = b.dataset.v;
+    b.classList.toggle('on', v === 'na' ? !!s.na : s.condition === v);
+  });
+  row.classList.toggle('done', !!(s.condition || s.na));
+  const det = row.querySelector('.detail');
+  const show = s.condition === 'average' || s.condition === 'poor';
+  det.classList.toggle('hidden', !show);
+  if(show){
+    det.querySelectorAll('.efforts .chip').forEach(c=>
+      c.classList.toggle('on', c.dataset.effort === s.effort));
+    det.querySelectorAll('.codes .chip').forEach(c=>
+      c.classList.toggle('on', (s.codes||[]).includes(c.dataset.code)));
+  }
+  document.getElementById('secCnt').textContent =
+    `${sectionDoneCount(SECTIONS[SIDX])} of ${SECTIONS[SIDX].items.length}`;
+  setProgress(overallProgress());
+}
+
+function markSectionGood(){
+  for(const z of SECTIONS[SIDX].items){
+    const s = STATE[z.id];
+    if(!s || (!s.condition && !s.na)){
+      STATE[z.id] = { condition:'good', effort:null, na:false, codes:[], note:'' };
+    }
+  }
+  screenSection();
+}
+function markSectionNA(){
+  for(const z of SECTIONS[SIDX].items){
+    STATE[z.id] = { condition:null, effort:null, na:true, codes:[], note:'' };
+  }
+  screenSection();
+}
+
+async function saveSection(){
+  const rows = SECTIONS[SIDX].items
+    .filter(z => STATE[z.id] && (STATE[z.id].condition || STATE[z.id].na))
+    .map(z => ({
+      inspection_id: INSPECTION.id,
+      zone_item_id: z.id,
+      condition: STATE[z.id].condition || null,
+      effort: STATE[z.id].effort || null,
+      not_applicable: !!STATE[z.id].na,
+      defect_codes: STATE[z.id].codes || [],
+      note: STATE[z.id].note || null,
+      updated_at: new Date().toISOString()
+    }));
+  if(!rows.length) return { error:null };
+  return await sb.from('inspection_items')
+    .upsert(rows, { onConflict:'inspection_id,zone_item_id' });
+}
+
+async function prevSection(){ await saveSection(); SIDX--; screenSection(); }
+
+async function nextSection(){
+  const sec = SECTIONS[SIDX];
+  const missing = sec.items.length - sectionDoneCount(sec);
+  if(missing > 0){
+    if(!confirm(`${missing} item${missing>1?'s':''} in this section ${missing>1?'are':'is'} unmarked. Continue anyway?`)) return;
+  }
+  const btn = document.getElementById('nextBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const { error } = await saveSection();
+  if(error){ alert('Could not save: ' + error.message); btn.disabled=false; return; }
+  if(SIDX === SECTIONS.length - 1){ screenSummary(); }
+  else { SIDX++; screenSection(); }
+}
+
+/* ============================================================
+   SUMMARY
+   ============================================================ */
+async function screenSummary(){
+  setHeader('Inspection summary', JOB.job_number + ' · ' + JOB.vehicle, {back:true});
+  setProgress(100);
+  btnBack.onclick = () => { SIDX = SECTIONS.length-1; screenSection(); };
+
+  const counts = { good:0, average:0, poor:0, na:0 };
+  const flagged = [];
+  for(const z of ZONES){
+    const s = STATE[z.id]; if(!s) continue;
+    if(s.na){ counts.na++; continue; }
+    if(s.condition){ counts[s.condition]++; }
+    if(s.condition === 'average' || s.condition === 'poor'){
+      flagged.push({ z, s });
+    }
+  }
+
+  app.innerHTML = `
+    <div class="tiles">
+      <div class="tile g"><b>${counts.good}</b><span>Good</span></div>
+      <div class="tile a"><b>${counts.average}</b><span>Average</span></div>
+      <div class="tile p"><b>${counts.poor}</b><span>Poor</span></div>
+    </div>
+    <p class="note">${counts.na} marked not applicable · ${ZONES.length} zones total</p>
+
+    <h2>Flagged for post-inspection</h2>
+    ${ flagged.length === 0
+      ? `<p class="note">Nothing flagged. The post-inspection will have no carry-forward items.</p>`
+      : flagged.map(({z,s})=>`
+        <div class="flagline">
+          <span class="dot ${s.condition}"></span>
+          <span style="flex:1">${esc(z.section)} — ${esc(z.item_label)}
+            ${ s.note ? `<br><span class="cd" style="font-weight:500">${esc(s.note)}</span>` : '' }</span>
+          <span class="cd">${ (s.codes||[]).join(' ') || '—' }</span>
+        </div>`).join('') }
+
+    <div class="card" style="margin-top:20px">
+      <h3>Overall notes</h3>
+      <input class="note" id="overallNote" placeholder="Anything else worth recording"
+             value="${esc(INSPECTION.notes||'')}"
+             style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px">
+    </div>`;
+
+  setFooter(`<button class="btn primary" id="finBtn" onclick="finishInspection()">Complete pre-inspection</button>`);
+}
+
+async function finishInspection(){
+  const btn = document.getElementById('finBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const allRows = ZONES
+    .filter(z => STATE[z.id] && (STATE[z.id].condition || STATE[z.id].na))
+    .map(z => ({
+      inspection_id: INSPECTION.id,
+      zone_item_id: z.id,
+      condition: STATE[z.id].condition || null,
+      effort: STATE[z.id].effort || null,
+      not_applicable: !!STATE[z.id].na,
+      defect_codes: STATE[z.id].codes || [],
+      note: STATE[z.id].note || null,
+      updated_at: new Date().toISOString()
+    }));
+
+  const up = await sb.from('inspection_items')
+    .upsert(allRows, { onConflict:'inspection_id,zone_item_id' });
+  if(up.error){ alert('Could not save: '+up.error.message); btn.disabled=false; return; }
+
+  await sb.from('inspections').update({
+    notes: document.getElementById('overallNote').value || null,
+    completed_at: new Date().toISOString()
+  }).eq('id', INSPECTION.id);
+
+  await sb.from('jobs').update({
+    status:'awaiting_service', updated_at:new Date().toISOString()
+  }).eq('id', JOB.id);
+
+  app.innerHTML = `
+    ${banner('Pre-inspection saved.','ok')}
+    <div class="card">
+      <h3>${esc(JOB.job_number)}</h3>
+      <p class="note">${esc(JOB.vehicle)} — ${esc(JOB.customer_name)}</p>
+      <p class="note">Take the 12 before photos in Fieldd. Damage photos and signature capture
+      are coming in the next build — for now, note anything unusual on the job.</p>
+    </div>`;
+  setFooter(`<button class="btn primary" onclick="screenHome()">Back to jobs</button>`);
+  setProgress(null);
+}
+
+boot();
+</script>
+</body>
+</html>
