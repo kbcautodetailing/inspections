@@ -450,7 +450,9 @@ async function screenHome(){
   setHeader('KBC Inspections', ME.full_name + (ME.role==='admin' ? ' · Admin' : ''), {out:true});
   setProgress(null);
   app.innerHTML = `<div class="loading">Loading jobs…</div>`;
-  setFooter(`<button class="btn primary" onclick="screenNewJob()">Start new inspection</button>`);
+  setFooter(`
+    ${ ME.role === 'admin' ? `<button class="btn ghost" onclick="screenHistory()">History</button>` : '' }
+    <button class="btn primary" onclick="screenNewJob()">Start new inspection</button>`);
 
   const { data:jobs } = await sb.from('jobs')
     .select('id, job_number, customer_name, vehicle, status, created_at')
@@ -491,8 +493,24 @@ async function openJob(id){
 
   if(!pre){ await startInspection(); return; }
   if(!pre.completed_at){ INSPECTION = pre; await resumeInspection(); return; }
+  if(post && post.completed_at){ INSPECTION = post; await screenJobDone(pre, post); return; }
   if(post){ INSPECTION = post; await resumePost(); return; }
   screenPostIntro(pre);
+}
+
+async function screenJobDone(pre, post){
+  setHeader(JOB.job_number, JOB.vehicle + ' · ' + JOB.customer_name, {back:true});
+  setProgress(null); setFooter(null);
+  btnBack.onclick = screenHome;
+  app.innerHTML = `
+    <div class="card">
+      <h3>Complete</h3>
+      <p class="note">Pre-inspection ${esc(jobDate(pre.completed_at))}</p>
+      <p class="note">Post-inspection ${esc(jobDate(post.completed_at))}</p>
+      <p class="note">Both are locked. Ask the owner if something needs correcting.</p>
+    </div>
+    ${await shareBlock()}`;
+  setFooter(`<button class="btn primary" onclick="screenHome()">Back to jobs</button>`);
 }
 
 /* ============================================================
@@ -955,7 +973,8 @@ async function commitPre(stamp){
       <p class="note">${esc(JOB.vehicle)} — ${esc(JOB.customer_name)}</p>
       <p class="note">${esc(stamp)}</p>
       <p class="note">Take the 12 before photos in Fieldd, then start the job.</p>
-    </div>`;
+    </div>
+    ${await shareBlock()}`;
   setFooter(`<button class="btn primary" onclick="screenHome()">Back to jobs</button>`);
   setProgress(null);
 }
@@ -1542,9 +1561,104 @@ async function commitPost(stamp){
       <p class="note">${esc(JOB.vehicle)} — ${esc(JOB.customer_name)}</p>
       <p class="note">${esc(stamp)}</p>
       <p class="note">Make sure the 12 after photos are in Fieldd.</p>
-    </div>`;
+    </div>
+    ${await shareBlock()}`;
   setFooter(`<button class="btn primary" onclick="screenHome()">Back to jobs</button>`);
   setProgress(null);
+}
+
+/* ============================================================
+   SHARE LINK — client report, delivered via Fieldd chat
+   ============================================================ */
+async function shareBlock(){
+  return `
+    <div class="card" id="shareCard">
+      <h3>Send the report to the client</h3>
+      <p class="note">Copy the link, then paste it into the Fieldd chat for this job.
+        They'll get an SMS and can open it on their phone. Link works for 60 days.</p>
+      <button class="btn blue" id="shareBtn" onclick="doShare()">Copy report link</button>
+      <div id="shareOut"></div>
+    </div>`;
+}
+
+async function doShare(){
+  const btn = document.getElementById('shareBtn');
+  btn.disabled = true; btn.textContent = 'Creating link…';
+  const { data, error } = await withRetry(() =>
+    sb.rpc('mint_share_token', { p_job_id: JOB.id }));
+  if(error || !data){
+    document.getElementById('shareOut').innerHTML =
+      banner('Could not create the link: ' + ((error&&error.message)||'unknown'));
+    btn.disabled = false; btn.textContent = 'Copy report link';
+    return;
+  }
+  const url = `${location.origin}${location.pathname.replace(/[^/]*$/,'')}report.html?t=${data}`;
+
+  let copied = false;
+  try { await navigator.clipboard.writeText(url); copied = true; } catch(e){}
+
+  document.getElementById('shareOut').innerHTML = `
+    ${ copied ? banner('Link copied. Paste it into the Fieldd chat.','ok') : '' }
+    <input class="note" readonly value="${esc(url)}"
+      onclick="this.select()"
+      style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px;
+             margin-top:8px;font-size:13px">
+    ${ navigator.share ? `<button class="btn ghost" onclick="nativeShare('${esc(url)}')">Share…</button>` : '' }
+    <a class="btn ghost" href="${esc(url)}" target="_blank" rel="noopener"
+       style="text-decoration:none;display:block">Preview what the client sees</a>`;
+  btn.disabled = false; btn.textContent = 'Copy link again';
+}
+
+function nativeShare(url){
+  if(navigator.share) navigator.share({
+    title:'Your vehicle condition report', text:'Your KBC condition report:', url
+  }).catch(()=>{});
+}
+
+/* ============================================================
+   ADMIN — job history
+   ============================================================ */
+let HISTORY = [];
+
+async function screenHistory(){
+  setHeader('Job history','Search past inspections',{back:true});
+  setProgress(null); setFooter(null);
+  btnBack.onclick = screenHome;
+  app.innerHTML = `
+    <label class="f" style="margin-top:14px"><span>Search</span>
+      <input id="histQ" placeholder="Customer, vehicle, plate, or job number"
+             autocomplete="off" autocorrect="off"></label>
+    <div id="histOut"><div class="loading">Loading…</div></div>`;
+
+  const { data } = await sb.from('jobs')
+    .select('id, job_number, customer_name, vehicle, plate_vin, status, created_at')
+    .order('created_at', { ascending:false }).limit(300);
+  HISTORY = data || [];
+  document.getElementById('histQ').oninput = renderHistory;
+  renderHistory();
+}
+
+function renderHistory(){
+  const q = (document.getElementById('histQ').value||'').trim().toLowerCase();
+  const rows = !q ? HISTORY : HISTORY.filter(j =>
+    [j.customer_name, j.vehicle, j.plate_vin, j.job_number]
+      .some(v => (v||'').toLowerCase().includes(q)));
+
+  const badge = st =>
+      st === 'awaiting_service' ? `<span class="badge post">Post-inspection due</span>`
+    : st === 'complete'         ? `<span class="badge done">Complete</span>`
+    :                             `<span class="badge pre">Pre in progress</span>`;
+
+  document.getElementById('histOut').innerHTML = rows.length === 0
+    ? `<p class="note">Nothing matches that.</p>`
+    : `<p class="note">${rows.length} job${rows.length===1?'':'s'}</p>
+       <div class="joblist">${rows.map(j=>`
+         <button class="job" onclick="openJob('${j.id}')">
+           <div class="jn">${esc(j.job_number)} · ${esc(jobDate(j.created_at))}</div>
+           <div class="jv">${esc(j.vehicle)}</div>
+           <div class="jc">${esc(j.customer_name)}${ j.plate_vin ? ' · '+esc(j.plate_vin) : '' }</div>
+           ${badge(j.status)}
+         </button>`).join('')}</div>`;
 }
 
 boot();

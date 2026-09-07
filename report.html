@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b3a7a">
+<meta name="robots" content="noindex, nofollow">
+<title>Vehicle Condition Report — KBC Auto Detailing</title>
+<style>
+  :root{
+    --paper:#f4f5f7; --card:#fff; --ink:#14181c; --ink-soft:#5a636c;
+    --line:#d7dbe0; --navy:#1b3a7a; --blue:#0b8fd6;
+    --good:#1a8a3c; --avg:#d99400; --poor:#bd2a1d;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16.5px;line-height:1.45;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:0 16px 64px;}
+
+  header{background:var(--navy);color:#fff;padding:22px 16px 20px;}
+  .hin{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:14px;}
+  header img{width:52px;height:52px;border-radius:8px;background:#fff;padding:3px;flex-shrink:0;}
+  header h1{font-size:19px;margin:0;letter-spacing:-.2px;}
+  header .sub{font-size:13.5px;opacity:.85;margin-top:2px;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:18px;margin:16px 0;}
+  h2{font-size:20px;margin:28px 0 4px;letter-spacing:-.3px;}
+  h3{font-size:15px;margin:0 0 10px;color:var(--ink-soft);font-weight:600;}
+  p.note{color:var(--ink-soft);font-size:14.5px;margin:6px 0;}
+
+  .meta{display:grid;grid-template-columns:auto 1fr;gap:5px 16px;font-size:15px;}
+  .meta dt{color:var(--ink-soft);font-weight:600;}
+  .meta dd{margin:0;}
+
+  .tiles{display:flex;gap:10px;margin:14px 0;}
+  .tile{flex:1;border-radius:11px;padding:14px 8px;text-align:center;color:#fff;}
+  .tile b{display:block;font-size:28px;font-weight:800;line-height:1;}
+  .tile span{font-size:12px;font-weight:600;opacity:.93;}
+  .tile.g{background:var(--good);} .tile.a{background:var(--avg);}
+  .tile.p{background:var(--poor);} .tile.n{background:var(--navy);}
+
+  .item{border:1px solid var(--line);border-radius:11px;background:#fff;
+        padding:14px;margin:10px 0;}
+  .item-head{display:flex;gap:10px;align-items:baseline;}
+  .dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;position:relative;top:4px;}
+  .dot.average,.dot.still_present{background:var(--avg);}
+  .dot.poor,.dot.new_issue{background:var(--poor);}
+  .dot.resolved{background:var(--good);}
+  .item .lbl{font-weight:650;font-size:16px;flex:1;}
+  .item .sec{font-size:12.5px;color:var(--ink-soft);font-weight:600;margin-top:1px;}
+  .tag{font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:999px;white-space:nowrap;}
+  .tag.average,.tag.still_present{background:#fdf0d5;color:#8a6100;}
+  .tag.poor,.tag.new_issue{background:#fdeceb;color:#8f2015;}
+  .tag.resolved{background:#e4ece4;color:#26663a;}
+  .codes{font-size:13px;color:var(--ink-soft);font-weight:600;margin-top:7px;}
+  .itemnote{font-size:14.5px;margin-top:6px;}
+  .shots{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;}
+  .shots img{width:104px;height:104px;object-fit:cover;border-radius:9px;
+             border:1px solid var(--line);cursor:zoom-in;}
+
+  .sig{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  .sig img{height:74px;background:#fff;border:1px solid var(--line);
+           border-radius:9px;padding:5px;}
+
+  .banner{padding:13px 15px;border-radius:10px;font-size:14.5px;margin:14px 0;}
+  .banner.ok{background:#e9f6ed;color:#146b30;border:1px solid #bfe3cb;}
+  .banner.err{background:#fdeceb;color:#8f2015;border:1px solid #f3c3bd;}
+
+  .printbtn{
+    display:block;width:100%;padding:15px;border-radius:11px;background:var(--navy);
+    color:#fff;font-size:16px;font-weight:700;border:none;margin:20px 0 0;cursor:pointer;
+    font-family:inherit;
+  }
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);
+         font-size:12.5px;color:var(--ink-soft);}
+  .loading{text-align:center;padding:56px 0;color:var(--ink-soft);}
+
+  .lightbox{
+    position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;
+    align-items:center;justify-content:center;z-index:99;padding:16px;
+  }
+  .lightbox.on{display:flex;}
+  .lightbox img{max-width:100%;max-height:100%;border-radius:8px;}
+
+  @media print{
+    body{background:#fff;}
+    header{background:#fff !important;color:var(--ink) !important;
+           border-bottom:3px solid var(--navy);}
+    .printbtn,.lightbox{display:none !important;}
+    .item,.card{break-inside:avoid;}
+    .shots img{width:88px;height:88px;}
+    .tile{color:#000 !important;border:1px solid var(--line);}
+    .tile.g,.tile.a,.tile.p,.tile.n{background:#fff !important;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hin">
+    <img src="logo.png" alt="KBC Auto Detailing">
+    <div>
+      <h1>Vehicle Condition Report</h1>
+      <div class="sub">KBC Auto Detailing · State College, PA</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap" id="app"><div class="loading">Loading your report…</div></div>
+<div class="lightbox" id="lb" onclick="this.classList.remove('on')"><img id="lbimg" alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://vlgbwuxuiccfufknibde.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_-Mtd5ku4xeTrJx_jaKz5Nw_wAbbsyr0';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const app = document.getElementById('app');
+const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pubUrl = (bucket, path) =>
+  sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+
+const CODE_LABEL = {
+  SW:'Swirl marks', SC:'Scratches', WS:'Water spots',
+  DMG:'Damage', ETCH:'Etching', D:'Dents'
+};
+const COND_LABEL = { good:'Good', average:'Average', poor:'Poor' };
+const OUT_LABEL  = { resolved:'Resolved', still_present:'Still present', new_issue:'New issue' };
+
+function fdate(iso){
+  if(!iso) return '';
+  return new Date(iso).toLocaleString([], {
+    year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'
+  });
+}
+
+function zoom(src){
+  document.getElementById('lbimg').src = src;
+  document.getElementById('lb').classList.add('on');
+}
+
+async function load(){
+  const token = new URLSearchParams(location.search).get('t');
+  if(!token){
+    app.innerHTML = `<div class="banner err">This link is missing its code.
+      Ask KBC for a new one.</div>`;
+    return;
+  }
+
+  const { data, error } = await sb.rpc('get_report', { p_token: token });
+
+  if(error){
+    app.innerHTML = `<div class="banner err">The report could not be loaded.
+      Please contact KBC Auto Detailing.</div>`;
+    return;
+  }
+  if(data && data.error === 'expired'){
+    app.innerHTML = `<div class="banner err"><strong>This link has expired.</strong><br>
+      Report links stay active for 60 days. Contact KBC and we'll send a fresh one.</div>`;
+    return;
+  }
+  if(!data || data.error){
+    app.innerHTML = `<div class="banner err">We couldn't find that report.
+      Check the link or contact KBC Auto Detailing.</div>`;
+    return;
+  }
+
+  render(data);
+}
+
+function render(d){
+  const j = d.job;
+  const pre  = (d.inspections||[]).find(i => i.phase === 'pre');
+  const post = (d.inspections||[]).find(i => i.phase === 'post');
+
+  app.innerHTML = `
+    <div class="card">
+      <dl class="meta">
+        <dt>Vehicle</dt><dd>${esc(j.vehicle)}</dd>
+        <dt>Customer</dt><dd>${esc(j.customer_name)}</dd>
+        ${ j.plate_vin ? `<dt>Plate / VIN</dt><dd>${esc(j.plate_vin)}</dd>` : '' }
+        ${ j.package ? `<dt>Service</dt><dd>${esc(j.package)}</dd>` : '' }
+        <dt>Job</dt><dd>${esc(j.job_number)}</dd>
+        <dt>Date</dt><dd>${esc(fdate(j.created_at))}</dd>
+      </dl>
+    </div>
+
+    ${ pre ? section(pre, 'Condition at drop-off',
+        'Everything we found on your vehicle before we started. Anything not listed here was in good condition.') : '' }
+
+    ${ post ? section(post, 'After service',
+        'What we resolved, anything still present, and anything new we found.') : '' }
+
+    ${ !pre && !post ? `<div class="banner ok">This report isn't finished yet.
+        Check back shortly.</div>` : '' }
+
+    <button class="printbtn" onclick="window.print()">Save or print this report</button>
+
+    <footer>
+      Questions about anything here? Reply to us in the Fieldd message thread, or
+      email info@kbcautodetailing.com.<br><br>
+      This link stays active until ${esc(fdate(j.expires_at))}.
+      KBC Auto Detailing State College LLC.
+    </footer>`;
+
+  document.querySelectorAll('.shots img').forEach(im=>{
+    im.onclick = () => zoom(im.src);
+  });
+}
+
+function section(insp, title, blurb){
+  const c = insp.counts || {};
+  const isPre = insp.phase === 'pre';
+  const items = insp.items || [];
+
+  const tiles = isPre ? `
+    <div class="tiles">
+      <div class="tile g"><b>${c.good||0}</b><span>Good</span></div>
+      <div class="tile a"><b>${c.average||0}</b><span>Average</span></div>
+      <div class="tile p"><b>${c.poor||0}</b><span>Poor</span></div>
+    </div>` : `
+    <div class="tiles">
+      <div class="tile g"><b>${c.resolved||0}</b><span>Resolved</span></div>
+      <div class="tile a"><b>${c.still_present||0}</b><span>Still present</span></div>
+      <div class="tile p"><b>${c.new_issue||0}</b><span>New</span></div>
+    </div>`;
+
+  return `
+    <h2>${esc(title)}</h2>
+    <p class="note">${esc(blurb)}</p>
+    ${tiles}
+
+    ${ items.length === 0
+      ? `<div class="banner ok">${ isPre
+          ? 'Nothing was flagged. Your vehicle came to us in good condition throughout.'
+          : 'Nothing outstanding. Everything we flagged was resolved.' }</div>`
+      : items.map(it => itemHTML(it, isPre)).join('') }
+
+    ${ insp.notes ? `<div class="card"><h3>Notes from your technician</h3>
+        <p style="margin:0">${esc(insp.notes)}</p></div>` : '' }
+
+    ${ insp.signature ? `
+      <div class="card">
+        <h3>Signed</h3>
+        <div class="sig">
+          <img src="${pubUrl('signatures', insp.signature.path)}" alt="Signature">
+          <div>
+            <div style="font-weight:650">${esc(insp.signature.name)}</div>
+            <div class="note" style="margin:0">${esc(fdate(insp.signature.signed_at))}</div>
+          </div>
+        </div>
+      </div>` : '' }`;
+}
+
+function itemHTML(it, isPre){
+  const key = isPre ? it.condition : it.outcome;
+  const label = isPre ? (COND_LABEL[it.condition]||'') : (OUT_LABEL[it.outcome]||'');
+  const codes = (it.codes||[]).map(c => CODE_LABEL[c] || c).join(', ');
+  const shots = (it.photos||[]);
+
+  return `
+    <div class="item">
+      <div class="item-head">
+        <span class="dot ${key}"></span>
+        <span class="lbl">${esc(it.label)}
+          <div class="sec">${esc(it.section)}</div></span>
+        <span class="tag ${key}">${esc(label)}</span>
+      </div>
+      ${ codes ? `<div class="codes">${esc(codes)}</div>` : '' }
+      ${ it.note ? `<div class="itemnote">${esc(it.note)}</div>` : '' }
+      ${ shots.length ? `<div class="shots">${shots.map(p=>
+          `<img src="${pubUrl('damage-photos', p)}" alt="${esc(it.label)}" loading="lazy">`
+        ).join('')}</div>` : '' }
+    </div>`;
+}
+
+load();
+</script>
+</body>
+</html>
