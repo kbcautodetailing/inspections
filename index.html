@@ -125,6 +125,29 @@
   .badge.pre{background:#fdf0d5;color:#8a6100;}
   .badge.post{background:#dcecfa;color:#0f5c96;}
   .badge.done{background:#e4ece4;color:#3d6b45;}
+
+  .photobar{display:flex;align-items:center;gap:10px;margin-top:10px;}
+  .photobtn{
+    display:inline-block;padding:11px 14px;border:1.5px dashed var(--line);border-radius:9px;
+    background:#fff;font-size:14px;font-weight:700;color:var(--navy);min-height:44px;cursor:pointer;
+  }
+  .photocount{font-size:13px;font-weight:600;color:var(--good);}
+
+  .agreement{max-height:340px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .agsec{margin:14px 0;}
+  .agh{font-size:13px;font-weight:800;color:var(--navy);margin-bottom:3px;}
+  .agreement p{font-size:13.5px;line-height:1.5;color:var(--ink-soft);margin:0;}
+  .ack{font-size:15px;font-weight:600;line-height:1.4;margin:0 0 4px;}
+
+  .sigwrap{position:relative;margin-top:14px;}
+  .sigpad{
+    width:100%;height:190px;border:2px solid var(--line);border-radius:11px;
+    background:#fff;display:block;touch-action:none;
+  }
+  .sighint{
+    position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
+    text-align:center;color:#a8b0b8;font-size:15px;pointer-events:none;
+  }
   .detail input.note{
     width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;margin-top:2px;
   }
@@ -201,6 +224,67 @@ const SUPABASE_URL = 'https://vlgbwuxuiccfufknibde.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_-Mtd5ku4xeTrJx_jaKz5Nw_wAbbsyr0';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ------------------------------------------------------------
+   SERVICE AGREEMENT
+   Edit this text when your attorney gives you final wording.
+   Nothing else in the app needs to change.
+   ------------------------------------------------------------ */
+const AGREEMENT_TITLE = 'KBC Auto Detailing Service Agreement';
+const AGREEMENT_BODY = [
+  ['Vehicle access, operation and service quality',
+   `Client shall provide KBC Detailing personnel with access and keys to the vehicle to perform auto related services such as detailing, ceramic coating, tinting, wrap, wet sanding, and other cosmetic enhancement services. KBC Detailing endeavors to perform services to a high standard, within the constraints of its resources, time, and expertise, aiming for a clean, damage-free exterior and spotless interior. The parties will conduct a final inspection within 2 hours of completion of the services. Concerns must be communicated within 24 hours. KBC Detailing is not liable for concerns raised thereafter or if Client does not participate in the final inspection.`],
+  ['Accidents, pre-existing conditions and limitation of liability',
+   `KBC Detailing will document pre-existing damage but is not liable for pre-existing conditions. If damage occurs under KBC Detailing's care, Client will be notified. KBC Detailing provides no guarantees or warranties. Maximum liability is limited to the amount paid by Client for the service giving rise to the claim. KBC Detailing is not liable for any indirect, incidental, special, consequential, or punitive damages.`],
+  ['Fees, service terms and payment',
+   `Fee is the Total Cost indicated on your order. If the job exceeds estimated time by over 30 minutes, additional fees will be confirmed with Client. Payment due upon completion only via Credit Card, Debit, or Cash. Late payments incur a 10% fee plus 0.5% daily interest until paid. Client pays KBC Detailing's collection costs.`],
+  ['Feedback, termination and governing law',
+   `Feedback to info@kbcautodetailing.com. KBC Detailing may use vehicle pictures for marketing unless Client objects in writing. KBC Detailing may terminate for incompatibility. Agreement governed by Pennsylvania law.`],
+  ['Authority',
+   `By signing, you certify that you are authorized to sign this agreement on behalf of the vehicle's legal owner and are 18 or older. You agree to indemnify and hold KBC Detailing harmless from any claims or damages arising from your lack of authority to enter into this agreement.`]
+];
+const PRE_ACK  = 'I agree to the service agreement above and confirm this condition report reflects my vehicle at drop-off.';
+const POST_ACK = 'I have reviewed the post-service report above, including anything still present or newly found.';
+
+/* ------------------------------------------------------------
+   Photo handling — phone photos are 3–5MB each. Compress before
+   upload or the free storage tier disappears in a few months.
+   ------------------------------------------------------------ */
+function compressImage(file, maxPx=1400, quality=0.7){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width:w, height:h } = img;
+      if(Math.max(w,h) > maxPx){
+        const s = maxPx / Math.max(w,h);
+        w = Math.round(w*s); h = Math.round(h*s);
+      }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      c.toBlob(b => b ? resolve(b) : reject(new Error('Could not process image')),
+               'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image')); };
+    img.src = url;
+  });
+}
+
+function rid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+
+async function uploadDamagePhoto(file, itemId){
+  const blob = await compressImage(file);
+  const path = `${JOB.id}/${itemId}/${rid()}.jpg`;
+  const { error } = await sb.storage.from('damage-photos')
+    .upload(path, blob, { contentType:'image/jpeg' });
+  if(error) throw error;
+  const ins = await withRetry(() => sb.from('item_photos')
+    .insert({ inspection_item_id:itemId, storage_path:path }).select().single());
+  if(ins.error) throw ins.error;
+  return ins.data;
+}
 
 const app      = document.getElementById('app');
 const footbar  = document.getElementById('footbar');
@@ -543,6 +627,13 @@ function rowHTML(z){
         ${['minimal','standard','extended'].map(ef=>`<button class="chip ${s.effort===ef?'on':''}" data-effort="${ef}">${EFFORT_LABEL[ef]}</button>`).join('')}
       </div>
       <input class="note" placeholder="Note (optional)" value="${esc(s.note||'')}">
+      <div class="photobar">
+        <label class="photobtn">
+          <span class="plabel">Add damage photo</span>
+          <input type="file" accept="image/*" capture="environment" class="photoin" hidden>
+        </label>
+        <span class="photocount">${ (s.photos||0) ? `${s.photos} attached` : '' }</span>
+      </div>
     </div>
   </div>`;
 }
@@ -592,6 +683,46 @@ function wireDetail(row, zid){
   });
   const note = row.querySelector('.note');
   if(note) note.oninput = () => { if(STATE[zid]) STATE[zid].note = note.value; };
+  wirePhoto(row, zid, STATE);
+}
+
+/* A photo needs a saved item row to attach to, so the row is written
+   first, then the file uploads against its id. */
+function wirePhoto(row, zid, store){
+  const input = row.querySelector('.photoin');
+  if(!input) return;
+  const countEl = row.querySelector('.photocount');
+  const plabel = row.querySelector('.plabel');
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if(!file) return;
+    const s = store[zid]; if(!s) return;
+    plabel.textContent = 'Uploading…';
+    try{
+      let itemId = s.itemId;
+      if(!itemId){
+        const payload = (store === STATE)
+          ? { inspection_id:INSPECTION.id, zone_item_id:zid,
+              condition:s.condition||null, effort:s.effort||null,
+              not_applicable:!!s.na, defect_codes:s.codes||[], note:s.note||null }
+          : { inspection_id:INSPECTION.id, zone_item_id:zid,
+              outcome:s.outcome||null, not_applicable:false,
+              defect_codes:s.codes||[], note:s.note||null };
+        const r = await withRetry(() => sb.from('inspection_items')
+          .upsert(payload, { onConflict:'inspection_id,zone_item_id' })
+          .select().single());
+        if(r.error) throw r.error;
+        itemId = r.data.id; s.itemId = itemId;
+      }
+      await uploadDamagePhoto(file, itemId);
+      s.photos = (s.photos||0) + 1;
+      countEl.textContent = `${s.photos} attached`;
+    } catch(e){
+      alert('Photo did not upload: ' + (e.message||e));
+    }
+    plabel.textContent = 'Add damage photo';
+  };
 }
 
 function redrawRow(row, zid){
@@ -712,7 +843,7 @@ async function screenSummary(){
              style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px">
     </div>`;
 
-  setFooter(`<button class="btn primary" id="finBtn" onclick="finishInspection()">Complete pre-inspection</button>`);
+  setFooter(`<button class="btn primary" id="finBtn" onclick="finishInspection()">Continue to agreement</button>`);
 }
 
 async function finishInspection(){
@@ -735,13 +866,23 @@ async function finishInspection(){
   const up = await withRetry(() => sb.from('inspection_items')
     .upsert(allRows, { onConflict:'inspection_id,zone_item_id' }));
   if(up.error){
-    alert('Could not save after a few tries — check your signal and tap Complete again.\n\n' + up.error.message);
-    btn.disabled=false; btn.textContent='Complete pre-inspection'; return;
+    alert('Could not save after a few tries — check your signal and tap Continue again.\n\n' + up.error.message);
+    btn.disabled=false; btn.textContent='Continue to agreement'; return;
   }
 
   await withRetry(() => sb.from('inspections').update({
-    notes: document.getElementById('overallNote').value || null,
-    completed_at: new Date().toISOString()
+    notes: document.getElementById('overallNote').value || null
+  }).eq('id', INSPECTION.id));
+
+  screenSignoff('pre');
+}
+
+async function commitPre(stamp){
+  await withRetry(() => sb.from('inspections').update({
+    completed_at: new Date().toISOString(),
+    locked: true,
+    locked_at: new Date().toISOString(),
+    notes: ((INSPECTION.notes ? INSPECTION.notes + ' — ' : '') + stamp)
   }).eq('id', INSPECTION.id));
 
   await withRetry(() => sb.from('jobs').update({
@@ -749,20 +890,203 @@ async function finishInspection(){
   }).eq('id', JOB.id));
 
   app.innerHTML = `
-    ${banner('Pre-inspection saved.','ok')}
+    ${banner('Pre-inspection complete and locked.','ok')}
     <div class="card">
       <h3>${esc(JOB.job_number)}</h3>
       <p class="note">${esc(JOB.vehicle)} — ${esc(JOB.customer_name)}</p>
-      <p class="note">Take the 12 before photos in Fieldd. Damage photos and signature capture
-      are coming in the next build — for now, note anything unusual on the job.</p>
+      <p class="note">${esc(stamp)}</p>
+      <p class="note">Take the 12 before photos in Fieldd, then start the job.</p>
     </div>`;
   setFooter(`<button class="btn primary" onclick="screenHome()">Back to jobs</button>`);
   setProgress(null);
 }
 
 /* ============================================================
-   POST-INSPECTION — carry-forward
+   SIGN-OFF — agreement, signature capture, lock
    ============================================================ */
+
+let SIGPAD = null;   // {canvas, ctx, dirty}
+
+function sigPadHTML(){
+  return `
+    <div class="sigwrap">
+      <canvas id="sigpad" class="sigpad"></canvas>
+      <div class="sighint" id="sighint">Sign here with your finger</div>
+    </div>
+    <button class="btn ghost" style="margin-top:8px" onclick="clearSig()">Clear signature</button>`;
+}
+
+function initSigPad(){
+  const c = document.getElementById('sigpad');
+  if(!c) return;
+  const ratio = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  c.width = rect.width * ratio;
+  c.height = rect.height * ratio;
+  const ctx = c.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#14181c';
+  SIGPAD = { canvas:c, ctx, dirty:false };
+
+  let drawing = false, lx=0, ly=0;
+  const pos = e => {
+    const r = c.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    return { x:p.clientX - r.left, y:p.clientY - r.top };
+  };
+  const start = e => {
+    e.preventDefault(); drawing = true;
+    const p = pos(e); lx = p.x; ly = p.y;
+    if(!SIGPAD.dirty){
+      SIGPAD.dirty = true;
+      const h = document.getElementById('sighint'); if(h) h.style.display='none';
+      refreshSignBtn();
+    }
+  };
+  const move = e => {
+    if(!drawing) return; e.preventDefault();
+    const p = pos(e);
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(p.x, p.y); ctx.stroke();
+    lx = p.x; ly = p.y;
+  };
+  const end = () => { drawing = false; };
+
+  c.addEventListener('touchstart', start, {passive:false});
+  c.addEventListener('touchmove',  move,  {passive:false});
+  c.addEventListener('touchend',   end);
+  c.addEventListener('mousedown',  start);
+  c.addEventListener('mousemove',  move);
+  window.addEventListener('mouseup', end);
+}
+
+function clearSig(){
+  if(!SIGPAD) return;
+  const { canvas, ctx } = SIGPAD;
+  const ratio = window.devicePixelRatio || 1;
+  ctx.clearRect(0,0,canvas.width/ratio, canvas.height/ratio);
+  SIGPAD.dirty = false;
+  const h = document.getElementById('sighint'); if(h) h.style.display='';
+  refreshSignBtn();
+}
+
+function sigBlob(){
+  return new Promise(res => {
+    if(!SIGPAD || !SIGPAD.dirty) return res(null);
+    SIGPAD.canvas.toBlob(b => res(b), 'image/png');
+  });
+}
+
+let SIGNOFF_MODE = 'signed';   // 'signed' | 'absent' | 'declined'
+let SIGNOFF_PHASE = 'pre';
+
+function screenSignoff(phase){
+  SIGNOFF_PHASE = phase;
+  SIGNOFF_MODE = 'signed';
+  const isPre = phase === 'pre';
+  setHeader(isPre ? 'Agreement and sign-off' : 'Client sign-off',
+            JOB.job_number + ' · ' + JOB.vehicle, {back:true});
+  setProgress(100);
+  btnBack.onclick = () => isPre ? screenSummary() : screenPostSummary();
+
+  app.innerHTML = `
+    ${ isPre ? `
+      <div class="card agreement">
+        <h3 style="color:var(--ink);font-size:16px">${esc(AGREEMENT_TITLE)}</h3>
+        ${AGREEMENT_BODY.map(([h,b])=>`
+          <div class="agsec"><div class="agh">${esc(h)}</div><p>${esc(b)}</p></div>`).join('')}
+      </div>` : '' }
+
+    <div class="card">
+      <h3>Is the client here?</h3>
+      <div class="chips" style="margin-bottom:4px">
+        <button class="chip out on" data-mode="signed">Yes — signing now</button>
+        <button class="chip out" data-mode="absent">Not present</button>
+        ${ isPre ? '' : `<button class="chip out" data-mode="declined">Declined to sign</button>` }
+      </div>
+    </div>
+
+    <div class="card" id="signedBox">
+      <p class="ack">${esc(isPre ? PRE_ACK : POST_ACK)}</p>
+      <label class="f"><span>Legal name</span><input id="sigName" autocomplete="name"></label>
+      ${sigPadHTML()}
+    </div>
+
+    <div class="card hidden" id="absentBox">
+      <p class="note" id="absentCopy"></p>
+      <label class="f"><span>Your name (attesting)</span>
+        <input id="attestName" value="${esc(ME.full_name||'')}"></label>
+    </div>`;
+
+  document.querySelectorAll('.chip.out[data-mode]').forEach(btn=>{
+    btn.onclick = () => {
+      SIGNOFF_MODE = btn.dataset.mode;
+      document.querySelectorAll('.chip.out[data-mode]').forEach(b=>b.classList.remove('on'));
+      btn.classList.add('on');
+      const signed = SIGNOFF_MODE === 'signed';
+      document.getElementById('signedBox').classList.toggle('hidden', !signed);
+      document.getElementById('absentBox').classList.toggle('hidden', signed);
+      document.getElementById('absentCopy').textContent =
+        SIGNOFF_MODE === 'declined'
+          ? 'Recorded as declined. Note this on the job and raise it with the owner.'
+          : 'Recorded as not present, timestamped and attributed to you. The client gets a copy of this report to review.';
+      if(signed) setTimeout(initSigPad, 30);
+      refreshSignBtn();
+    };
+  });
+
+  setFooter(`<button class="btn primary" id="signBtn" onclick="submitSignoff()"></button>`);
+  setTimeout(initSigPad, 30);
+  const nameEl = document.getElementById('sigName');
+  if(nameEl) nameEl.oninput = refreshSignBtn;
+  refreshSignBtn();
+}
+
+function refreshSignBtn(){
+  const btn = document.getElementById('signBtn');
+  if(!btn) return;
+  const isPre = SIGNOFF_PHASE === 'pre';
+  const label = isPre ? 'Complete pre-inspection' : 'Complete post-inspection';
+  if(SIGNOFF_MODE !== 'signed'){ btn.disabled = false; btn.textContent = label; return; }
+  const name = (document.getElementById('sigName')||{}).value || '';
+  const ok = name.trim().length > 1 && SIGPAD && SIGPAD.dirty;
+  btn.disabled = !ok;
+  btn.textContent = ok ? label
+    : (!name.trim() ? 'Enter the client\u2019s name' : 'Signature needed');
+}
+
+async function saveSignature(){
+  if(SIGNOFF_MODE === 'signed'){
+    const blob = await sigBlob();
+    if(!blob) throw new Error('No signature captured.');
+    const path = `${JOB.id}/${SIGNOFF_PHASE}-${rid()}.png`;
+    const up = await sb.storage.from('signatures')
+      .upload(path, blob, { contentType:'image/png' });
+    if(up.error) throw up.error;
+    const ins = await withRetry(() => sb.from('signatures').upsert({
+      inspection_id: INSPECTION.id,
+      signer_name: document.getElementById('sigName').value.trim(),
+      signer_role: 'customer',
+      storage_path: path
+    }, { onConflict:'inspection_id,signer_role' }));
+    if(ins.error) throw ins.error;
+    return `Signed by ${document.getElementById('sigName').value.trim()}`;
+  }
+  const who = (document.getElementById('attestName')||{}).value || ME.full_name;
+  const word = SIGNOFF_MODE === 'declined' ? 'declined to sign' : 'was not present';
+  return `Client ${word}. Attested by ${who} at ${new Date().toLocaleString()}.`;
+}
+
+async function submitSignoff(){
+  const btn = document.getElementById('signBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  let stamp;
+  try { stamp = await saveSignature(); }
+  catch(e){ alert('Could not save the signature: ' + (e.message||e)); refreshSignBtn(); return; }
+  if(SIGNOFF_PHASE === 'pre') await commitPre(stamp);
+  else await commitPost(stamp);
+}
+
 
 let CARRIED = [];   // [{zone, pre:{condition,effort,codes,note}}]
 let POST = {};      // zone_item_id -> {outcome, codes:[], note, isNew}
@@ -894,6 +1218,11 @@ function carriedRowHTML(c){
         ${CODES.map(cd=>`<button class="chip ${ (s.codes||[]).includes(cd.code)?'on':'' }" data-code="${cd.code}">${esc(cd.code)} ${esc(cd.label)}</button>`).join('')}
       </div>
       <input class="note" placeholder="What did you tell the client?" value="${esc(s.note||'')}">
+      <div class="photobar">
+        <label class="photobtn"><span class="plabel">Add damage photo</span>
+          <input type="file" accept="image/*" capture="environment" class="photoin" hidden></label>
+        <span class="photocount">${ (s.photos||0) ? `${s.photos} attached` : '' }</span>
+      </div>
     </div>
   </div>`;
 }
@@ -913,6 +1242,11 @@ function newIssueRowHTML(zone, s){
         ${CODES.map(cd=>`<button class="chip ${ (s.codes||[]).includes(cd.code)?'on':'' }" data-code="${cd.code}">${esc(cd.code)} ${esc(cd.label)}</button>`).join('')}
       </div>
       <input class="note" placeholder="What did you tell the client?" value="${esc(s.note||'')}">
+      <div class="photobar">
+        <label class="photobtn"><span class="plabel">Add damage photo</span>
+          <input type="file" accept="image/*" capture="environment" class="photoin" hidden></label>
+        <span class="photocount">${ (s.photos||0) ? `${s.photos} attached` : '' }</span>
+      </div>
     </div>
   </div>`;
 }
@@ -976,6 +1310,7 @@ function wirePostDetail(row, zid){
   });
   const note = row.querySelector('.note');
   if(note) note.oninput = () => { if(POST[zid]) POST[zid].note = note.value; };
+  wirePhoto(row, zid, POST);
 }
 
 function refreshPostBtn(){
@@ -1072,7 +1407,7 @@ function screenPostSummary(){
              style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px">
     </div>`;
 
-  setFooter(`<button class="btn primary" id="finPost" onclick="finishPost()">Complete post-inspection</button>`);
+  setFooter(`<button class="btn primary" id="finPost" onclick="finishPost()">Continue to sign-off</button>`);
 }
 
 async function finishPost(){
@@ -1095,14 +1430,24 @@ async function finishPost(){
     const up = await withRetry(() => sb.from('inspection_items')
       .upsert(rows, { onConflict:'inspection_id,zone_item_id' }));
     if(up.error){
-      alert('Could not save after a few tries — check your signal and tap Complete again.\n\n' + up.error.message);
-      btn.disabled=false; btn.textContent='Complete post-inspection'; return;
+      alert('Could not save after a few tries — check your signal and tap Continue again.\n\n' + up.error.message);
+      btn.disabled=false; btn.textContent='Continue to sign-off'; return;
     }
   }
 
   await withRetry(() => sb.from('inspections').update({
-    notes: document.getElementById('postNote').value || null,
-    completed_at: new Date().toISOString()
+    notes: document.getElementById('postNote').value || null
+  }).eq('id', INSPECTION.id));
+
+  screenSignoff('post');
+}
+
+async function commitPost(stamp){
+  await withRetry(() => sb.from('inspections').update({
+    completed_at: new Date().toISOString(),
+    locked: true,
+    locked_at: new Date().toISOString(),
+    notes: ((INSPECTION.notes ? INSPECTION.notes + ' — ' : '') + stamp)
   }).eq('id', INSPECTION.id));
 
   await withRetry(() => sb.from('jobs').update({
@@ -1110,12 +1455,12 @@ async function finishPost(){
   }).eq('id', JOB.id));
 
   app.innerHTML = `
-    ${banner('Post-inspection saved.','ok')}
+    ${banner('Post-inspection complete and locked.','ok')}
     <div class="card">
       <h3>${esc(JOB.job_number)}</h3>
       <p class="note">${esc(JOB.vehicle)} — ${esc(JOB.customer_name)}</p>
-      <p class="note">Make sure the 12 after photos are in Fieldd. Client signature
-        and PDF export are coming in the next build.</p>
+      <p class="note">${esc(stamp)}</p>
+      <p class="note">Make sure the 12 after photos are in Fieldd.</p>
     </div>`;
   setFooter(`<button class="btn primary" onclick="screenHome()">Back to jobs</button>`);
   setProgress(null);
