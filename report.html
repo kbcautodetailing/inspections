@@ -243,6 +243,8 @@ function section(insp, title, blurb){
     ${ insp.notes ? `<div class="card"><h3>Notes from your technician</h3>
         <p style="margin:0">${esc(insp.notes)}</p></div>` : '' }
 
+    ${ insp.tech ? `<p class="note">Inspected by ${esc(insp.tech)}${ insp.completed_at ? ' · ' + esc(fdate(insp.completed_at)) : '' }</p>` : '' }
+
     ${ insp.signature ? `
       <div class="card">
         <h3>Signed</h3>

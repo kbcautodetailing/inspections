@@ -296,6 +296,13 @@ function compressImage(file, maxPx=1400, quality=0.7){
   });
 }
 
+let TEAM_CACHE = [];
+async function loadTeamCache(){
+  if(TEAM_CACHE.length) return;
+  const { data } = await sb.from('profiles').select('id, full_name, active');
+  TEAM_CACHE = data || [];
+}
+
 function jobDate(iso){
   if(!iso) return '';
   const d = new Date(iso), now = new Date();
@@ -331,6 +338,10 @@ const btnOut   = document.getElementById('btnOut');
 const prog     = document.getElementById('prog');
 
 let ME = null;          // profile row
+const isAdmin   = () => ME && ME.role === 'admin';
+const isManager = () => ME && (ME.role === 'admin' || ME.role === 'manager');
+const isTech    = () => ME && ME.role === 'tech';
+let RUNNER = '';        // who is actually doing this inspection
 let ZONES = [];         // all zone_items
 let CODES = [];         // defect codes
 let JOB = null;         // active job
@@ -393,7 +404,13 @@ async function boot(){
     setFooter(`<button class="btn ghost" onclick="signOut()">Sign out</button>`);
     return;
   }
+  if(profile.active === false){
+    app.innerHTML = banner('This account has been deactivated. Contact the owner.');
+    setFooter(`<button class="btn ghost" onclick="signOut()">Sign out</button>`);
+    return;
+  }
   ME = profile;
+  RUNNER = profile.full_name || '';
   await loadReference();
   screenHome();
 }
@@ -451,13 +468,16 @@ btnOut.onclick = signOut;
    HOME
    ============================================================ */
 async function screenHome(){
-  setHeader('KBC Inspections', ME.full_name + (ME.role==='admin' ? ' · Admin' : ''), {out:true});
+  const roleTag = ME.role === 'admin' ? ' · Owner'
+                : ME.role === 'manager' ? ' · Manager' : '';
+  setHeader('KBC Inspections', ME.full_name + roleTag, {out:true});
   setProgress(null);
   app.innerHTML = `<div class="loading">Loading jobs…</div>`;
   setFooter(`
-    ${ ME.role === 'admin' ? `<button class="btn ghost" onclick="screenHistory()">History</button>
-       <button class="btn ghost" onclick="screenAudit()">Audit</button>` : '' }
-    <button class="btn primary" onclick="screenNewJob()">Start new inspection</button>`);
+    ${ isManager() ? `<button class="btn ghost" onclick="screenMore()">More</button>` : '' }
+    ${ isManager() && !isAdmin() ? '' : '' }
+    ${ ME.role === 'manager' ? ''
+       : `<button class="btn primary" onclick="screenNewJob()">Start new inspection</button>` }`);
 
   const { data:jobs } = await sb.from('jobs')
     .select('id, job_number, customer_name, vehicle, status, created_at')
@@ -496,11 +516,31 @@ async function openJob(id){
   const pre  = (insps||[]).find(i => i.phase === 'pre');
   const post = (insps||[]).find(i => i.phase === 'post');
 
+  if(ME.role === 'manager'){ await screenJobView(); return; }
   if(!pre){ await startInspection(); return; }
   if(!pre.completed_at){ INSPECTION = pre; await resumeInspection(); return; }
   if(post && post.completed_at){ INSPECTION = post; await screenJobDone(pre, post); return; }
   if(post){ INSPECTION = post; await resumePost(); return; }
   screenPostIntro(pre);
+}
+
+async function screenJobView(){
+  setHeader(JOB.job_number, JOB.vehicle + ' · ' + JOB.customer_name, {back:true});
+  setProgress(null); setFooter(null);
+  btnBack.onclick = screenHome;
+  const { data:insps } = await sb.from('inspections')
+    .select('*').eq('job_id', JOB.id);
+  app.innerHTML = `
+    <div class="card">
+      <h3>Status</h3>
+      ${ (insps||[]).length === 0 ? `<p class="note">Nothing recorded yet.</p>` :
+        (insps||[]).map(i=>`<p class="note">${ i.phase === 'pre' ? 'Pre':'Post' }-inspection
+          ${ i.completed_at ? 'completed ' + esc(jobDate(i.completed_at)) : 'in progress' }
+          ${ i.tech_name ? ' · ' + esc(i.tech_name) : '' }</p>`).join('') }
+      <p class="note">You have view access. Inspections are run by techs.</p>
+    </div>
+    ${await shareBlock()}`;
+  setFooter(`<button class="btn primary" onclick="screenHome()">Back to jobs</button>`);
 }
 
 async function screenJobDone(pre, post){
@@ -510,8 +550,8 @@ async function screenJobDone(pre, post){
   app.innerHTML = `
     <div class="card">
       <h3>Complete</h3>
-      <p class="note">Pre-inspection ${esc(jobDate(pre.completed_at))}</p>
-      <p class="note">Post-inspection ${esc(jobDate(post.completed_at))}</p>
+      <p class="note">Pre-inspection ${esc(jobDate(pre.completed_at))}${ pre.tech_name ? ' · ' + esc(pre.tech_name) : '' }</p>
+      <p class="note">Post-inspection ${esc(jobDate(post.completed_at))}${ post.tech_name ? ' · ' + esc(post.tech_name) : '' }</p>
       <p class="note">Both are locked. Ask the owner if something needs correcting.</p>
     </div>
     ${await shareBlock()}`;
@@ -580,9 +620,49 @@ async function createJob(e){
 /* ============================================================
    INSPECTION
    ============================================================ */
+function screenWhoseJob(phase){
+  setHeader('Who is running this?', JOB.job_number + ' · ' + JOB.vehicle, {back:true});
+  setProgress(null);
+  btnBack.onclick = screenHome;
+  const others = TEAM_CACHE.filter(t => t.active !== false);
+  app.innerHTML = `
+    <div class="card">
+      <p class="note">This name goes on the report. Change it if someone else is
+        doing the walkaround on your phone.</p>
+      <div class="chips" id="whoChips">
+        ${ others.map(t=>`<button class="chip ${ t.full_name === RUNNER ? 'on':'' }"
+            data-name="${esc(t.full_name)}">${esc(t.full_name)}</button>`).join('') }
+      </div>
+      <label class="f"><span>Or type a name</span>
+        <input id="runnerName" value="${esc(RUNNER)}" autocomplete="off"></label>
+    </div>`;
+  const input = document.getElementById('runnerName');
+  document.querySelectorAll('#whoChips .chip').forEach(c=>{
+    c.onclick = () => {
+      document.querySelectorAll('#whoChips .chip').forEach(x=>x.classList.remove('on'));
+      c.classList.add('on');
+      input.value = c.dataset.name;
+    };
+  });
+  setFooter(`<button class="btn primary" onclick="confirmRunner('${phase}')">Start ${phase === 'pre' ? 'pre-inspection' : 'post-inspection'}</button>`);
+}
+
+async function confirmRunner(phase){
+  const v = (document.getElementById('runnerName').value||'').trim();
+  if(!v){ alert('Put a name on it.'); return; }
+  RUNNER = v;
+  if(phase === 'pre') await createPreInspection();
+  else await createPostInspection();
+}
+
 async function startInspection(){
+  await loadTeamCache();
+  screenWhoseJob('pre');
+}
+
+async function createPreInspection(){
   const { data, error } = await withRetry(() => sb.from('inspections').insert({
-    job_id: JOB.id, phase:'pre', tech_id: ME.id
+    job_id: JOB.id, phase:'pre', tech_id: ME.id, tech_name: RUNNER
   }).select().single());
   if(error){ app.innerHTML = banner('Could not start inspection: ' + error.message); return; }
   INSPECTION = data; STATE = {}; SIDX = 0;
@@ -1229,10 +1309,13 @@ async function screenPostIntro(pre){
 }
 
 async function startPost(){
-  const btn = document.getElementById('startPost');
-  if(btn){ btn.disabled = true; btn.textContent = 'Starting…'; }
+  await loadTeamCache();
+  screenWhoseJob('post');
+}
+
+async function createPostInspection(){
   const { data, error } = await withRetry(() => sb.from('inspections').insert({
-    job_id: JOB.id, phase:'post', tech_id: ME.id
+    job_id: JOB.id, phase:'post', tech_id: ME.id, tech_name: RUNNER
   }).select().single());
   if(error){ app.innerHTML = banner('Could not start: ' + error.message); return; }
   INSPECTION = data; POST = {};
@@ -1747,6 +1830,103 @@ async function screenAudit(){
           </span>
           <span class="cd">${ b.seconds_in_section != null ? b.seconds_in_section + 's' : '—' }</span>
         </div>`).join('') }`;
+}
+
+/* ============================================================
+   MORE — owner and manager tools
+   ============================================================ */
+function screenMore(){
+  setHeader('Tools', ME.full_name, {back:true});
+  setProgress(null); setFooter(null);
+  btnBack.onclick = screenHome;
+  app.innerHTML = `
+    <div class="joblist" style="margin-top:14px">
+      <button class="job" onclick="screenHistory()">
+        <div class="jv">Job history</div>
+        <div class="jc">Search every inspection by customer, vehicle or plate</div>
+      </button>
+      <button class="job" onclick="screenAudit()">
+        <div class="jv">Bulk marking</div>
+        <div class="jc">Who is tapping "mark all good", and how fast</div>
+      </button>
+      <button class="job" onclick="screenTeam()">
+        <div class="jv">Team</div>
+        <div class="jc">${ isAdmin() ? 'Roles and access' : 'Who has access' }</div>
+      </button>
+    </div>`;
+}
+
+/* ============================================================
+   TEAM
+   ============================================================ */
+let TEAM = [];
+
+async function screenTeam(){
+  setHeader('Team','Access and roles',{back:true});
+  setProgress(null); setFooter(null);
+  btnBack.onclick = screenMore;
+  app.innerHTML = `<div class="loading">Loading…</div>`;
+
+  const { data, error } = await sb.from('profiles')
+    .select('*').order('role').order('full_name');
+  if(error){ app.innerHTML = banner(error.message); return; }
+  TEAM = data || [];
+  renderTeam();
+}
+
+const ROLE_LABEL = { admin:'Owner', manager:'Manager', tech:'Tech' };
+
+function renderTeam(){
+  const active   = TEAM.filter(t => t.active !== false);
+  const inactive = TEAM.filter(t => t.active === false);
+
+  const row = t => `
+    <div class="card" style="padding:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1">
+          <div style="font-weight:650;font-size:16px">${esc(t.full_name||'—')}</div>
+          <div class="cd">${esc(ROLE_LABEL[t.role]||t.role)}</div>
+        </div>
+        ${ t.id === ME.id ? `<span class="cd">You</span>` : `
+          <button class="chip ${ t.active === false ? '':'on' }"
+            onclick="toggleActive('${t.id}')">
+            ${ t.active === false ? 'Reactivate' : 'Active' }</button>` }
+      </div>
+      ${ isAdmin() && t.id !== ME.id ? `
+        <div class="chips" style="margin-top:10px">
+          ${['admin','manager','tech'].map(r=>`
+            <button class="chip ${t.role===r?'on':''}"
+              onclick="setRole('${t.id}','${r}')">${ROLE_LABEL[r]}</button>`).join('')}
+        </div>` : '' }
+    </div>`;
+
+  app.innerHTML = `
+    <p class="note">New accounts are created in Supabase, then given a role here.
+      ${ isAdmin() ? '' : 'Only an owner can change roles.' }</p>
+    <h2>Active</h2>
+    ${ active.map(row).join('') || `<p class="note">Nobody yet.</p>` }
+    ${ inactive.length ? `<h2>Deactivated</h2>${inactive.map(row).join('')}` : '' }`;
+}
+
+async function toggleActive(id){
+  const t = TEAM.find(x => x.id === id); if(!t) return;
+  const next = !(t.active !== false);
+  const { error } = await withRetry(() =>
+    sb.from('profiles').update({ active: next }).eq('id', id));
+  if(error){ alert(error.message); return; }
+  t.active = next; renderTeam();
+}
+
+async function setRole(id, role){
+  const t = TEAM.find(x => x.id === id); if(!t) return;
+  if(role === 'tech' && t.role === 'admin'){
+    const admins = TEAM.filter(x => x.role === 'admin' && x.active !== false).length;
+    if(admins <= 1){ alert('There has to be at least one owner.'); return; }
+  }
+  const { error } = await withRetry(() =>
+    sb.from('profiles').update({ role }).eq('id', id));
+  if(error){ alert(error.message); return; }
+  t.role = role; renderTeam();
 }
 
 boot();
