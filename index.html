@@ -200,6 +200,14 @@
   .banner.warn{background:#fdf4e3;color:#7a5600;border:1px solid #eed9ab;}
   .nopic{font-size:11.5px;font-weight:800;color:var(--poor);}
   .haspic{font-size:11.5px;font-weight:800;color:var(--good);}
+  .flagline.mini{align-items:center;}
+  .photobar.mini{margin:0;}
+  .photobar.mini .photobtn{
+    padding:9px 12px;min-height:38px;font-size:12.5px;font-weight:800;
+    white-space:nowrap;width:auto;
+  }
+  .photobar.mini.has .photobtn{padding:8px 11px;}
+  .photobar.mini .addmore{display:none;}
 
   .loading{text-align:center;padding:48px 0;color:var(--ink-soft);}
 
@@ -700,7 +708,7 @@ function wireDetail(row, zid){
 
 /* A photo needs a saved item row to attach to, so the row is written
    first, then the file uploads against its id. */
-function wirePhoto(row, zid, store){
+function wirePhoto(row, zid, store, onDone){
   const input = row.querySelector('.photoin');
   if(!input) return;
   const bar = row.querySelector('.photobar');
@@ -734,6 +742,7 @@ function wirePhoto(row, zid, store){
       alert('Photo did not upload: ' + (e.message||e));
     }
     plabel.textContent = (s.photos||0) ? photoLabel(s.photos) : 'Add damage photo';
+    if(onDone) onDone();
   };
 }
 
@@ -850,13 +859,17 @@ async function screenSummary(){
     ${ flagged.length === 0
       ? `<p class="note">Nothing flagged. The post-inspection will have no carry-forward items.</p>`
       : flagged.map(({z,s})=>`
-        <div class="flagline">
+        <div class="flagline mini sumrow" data-zid="${z.id}">
           <span class="dot ${s.condition}"></span>
           <span style="flex:1">${esc(z.section)} — ${esc(z.item_label)}
-            ${ s.note ? `<br><span class="cd" style="font-weight:500">${esc(s.note)}</span>` : '' }</span>
-          <span style="text-align:right">
-            <span class="cd">${ (s.codes||[]).join(' ') || '—' }</span><br>
-            <span class="${ (s.photos||0) ? 'haspic':'nopic' }">${ (s.photos||0) ? `${s.photos} photo${s.photos===1?'':'s'}` : 'no photo' }</span>
+            <br><span class="cd">${ (s.codes||[]).join(' ') || 'no code' }</span>
+            ${ s.note ? ` <span class="cd" style="font-weight:500">· ${esc(s.note)}</span>` : '' }</span>
+          <span class="photobar mini ${ (s.photos||0) ? 'has':'' }">
+            <label class="photobtn">
+              <span class="plabel">${ (s.photos||0) ? photoLabel(s.photos) : 'Add photo' }</span>
+              <span class="addmore"></span>
+              <input type="file" accept="image/*" capture="environment" class="photoin" hidden>
+            </label>
           </span>
         </div>`).join('') }
 
@@ -868,6 +881,17 @@ async function screenSummary(){
     </div>`;
 
   setFooter(`<button class="btn primary" id="finBtn" onclick="finishInspection()">Continue to agreement</button>`);
+
+  // Last chance to attach evidence before the client signs.
+  document.querySelectorAll('.sumrow').forEach(row=>{
+    wirePhoto(row, +row.dataset.zid, STATE, () => {
+      const note = document.getElementById('overallNote');
+      const keep = note ? note.value : '';
+      screenSummary();
+      const n2 = document.getElementById('overallNote');
+      if(n2) n2.value = keep;
+    });
+  });
 }
 
 async function finishInspection(){
@@ -1415,21 +1439,9 @@ function screenPostSummary(){
         <strong>${postNoPhoto} of those ${postNoPhoto===1?'has':'have'} no photo.</strong>
         A new issue without a photo is hard to defend if the client disputes it.</div>` : '' }
 
-    ${ stillList.length ? `<h2>Still there</h2>` + stillList.map(({zone,s})=>`
-        <div class="flagline">
-          <span class="dot average"></span>
-          <span style="flex:1">${esc(zone.section)} — ${esc(zone.item_label)}
-            ${ s.note ? `<br><span class="cd" style="font-weight:500">${esc(s.note)}</span>` : '' }</span>
-          <span class="cd">${ (s.codes||[]).join(' ') || '—' }</span>
-        </div>`).join('') : '' }
+    ${ stillList.length ? `<h2>Still there</h2>` + stillList.map(({zone,s})=>postSumRow(zone,s,'average')).join('') : '' }
 
-    ${ newList.length ? `<h2>New issues</h2>` + newList.map(({zone,s})=>`
-        <div class="flagline">
-          <span class="dot poor"></span>
-          <span style="flex:1">${esc(zone.section)} — ${esc(zone.item_label)}
-            ${ s.note ? `<br><span class="cd" style="font-weight:500">${esc(s.note)}</span>` : '' }</span>
-          <span class="cd">${ (s.codes||[]).join(' ') || '—' }</span>
-        </div>`).join('') : '' }
+    ${ newList.length ? `<h2>New issues</h2>` + newList.map(({zone,s})=>postSumRow(zone,s,'poor')).join('') : '' }
 
     <div class="card" style="margin-top:20px">
       <h3>Handoff notes</h3>
@@ -1439,6 +1451,33 @@ function screenPostSummary(){
     </div>`;
 
   setFooter(`<button class="btn primary" id="finPost" onclick="finishPost()">Continue to sign-off</button>`);
+
+  document.querySelectorAll('.psumrow').forEach(row=>{
+    wirePhoto(row, +row.dataset.zid, POST, () => {
+      const note = document.getElementById('postNote');
+      const keep = note ? note.value : '';
+      screenPostSummary();
+      const n2 = document.getElementById('postNote');
+      if(n2) n2.value = keep;
+    });
+  });
+}
+
+function postSumRow(zone, s, dot){
+  return `
+    <div class="flagline mini psumrow" data-zid="${zone.id}">
+      <span class="dot ${dot}"></span>
+      <span style="flex:1">${esc(zone.section)} — ${esc(zone.item_label)}
+        <br><span class="cd">${ (s.codes||[]).join(' ') || 'no code' }</span>
+        ${ s.note ? ` <span class="cd" style="font-weight:500">· ${esc(s.note)}</span>` : '' }</span>
+      <span class="photobar mini ${ (s.photos||0) ? 'has':'' }">
+        <label class="photobtn">
+          <span class="plabel">${ (s.photos||0) ? photoLabel(s.photos) : 'Add photo' }</span>
+          <span class="addmore"></span>
+          <input type="file" accept="image/*" capture="environment" class="photoin" hidden>
+        </label>
+      </span>
+    </div>`;
 }
 
 async function finishPost(){
