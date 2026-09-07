@@ -199,6 +199,10 @@
   .banner.ok{background:#e9f6ed;color:#146b30;border:1px solid #bfe3cb;}
   .banner.warn{background:#fdf4e3;color:#7a5600;border:1px solid #eed9ab;}
   .nopic{font-size:11.5px;font-weight:800;color:var(--poor);}
+  .meta2{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14.5px;margin:0;}
+  .meta2 dt{color:var(--ink-soft);font-weight:600;}
+  .meta2 dd{margin:0;font-weight:650;}
+  .flagnum{color:var(--poor);}
   .haspic{font-size:11.5px;font-weight:800;color:var(--good);}
   .flagline.mini{align-items:center;}
   .photobar.mini{margin:0;}
@@ -451,7 +455,8 @@ async function screenHome(){
   setProgress(null);
   app.innerHTML = `<div class="loading">Loading jobs…</div>`;
   setFooter(`
-    ${ ME.role === 'admin' ? `<button class="btn ghost" onclick="screenHistory()">History</button>` : '' }
+    ${ ME.role === 'admin' ? `<button class="btn ghost" onclick="screenHistory()">History</button>
+       <button class="btn ghost" onclick="screenAudit()">Audit</button>` : '' }
     <button class="btn primary" onclick="screenNewJob()">Start new inspection</button>`);
 
   const { data:jobs } = await sb.from('jobs')
@@ -610,8 +615,11 @@ function overallProgress(){
   return Math.round(done / ZONES.length * 100);
 }
 
+let SECTION_ENTERED_AT = 0;
+
 function screenSection(){
   const sec = SECTIONS[SIDX];
+  SECTION_ENTERED_AT = Date.now();
   setHeader(sec.section, `${JOB.job_number} · ${sec.surface === 'exterior' ? 'Exterior':'Interior'} · Section ${SIDX+1} of ${SECTIONS.length}`, {back:true});
   setProgress(overallProgress());
   btnBack.onclick = () => { if(SIDX>0){ SIDX--; screenSection(); } else screenHome(); };
@@ -800,19 +808,45 @@ function redrawRow(row, zid){
 }
 
 function markSectionGood(){
-  for(const z of SECTIONS[SIDX].items){
+  const sec = SECTIONS[SIDX];
+  let n = 0;
+  for(const z of sec.items){
     const s = STATE[z.id];
     if(!s || (!s.condition && !s.na)){
       STATE[z.id] = { condition:'good', effort:null, na:false, codes:[], note:'' };
+      n++;
     }
   }
+  logBulkMark('all_good', sec, n);
   screenSection();
 }
+
 function markSectionNA(){
-  for(const z of SECTIONS[SIDX].items){
+  const sec = SECTIONS[SIDX];
+  for(const z of sec.items){
     STATE[z.id] = { condition:null, effort:null, na:true, codes:[], note:'' };
   }
+  logBulkMark('section_na', sec, sec.items.length);
   screenSection();
+}
+
+/* Logged for the owner only. Techs can write here but cannot read
+   it back, so the record can't be tidied up after the fact. */
+function logBulkMark(action, sec, n){
+  const secs = SECTION_ENTERED_AT
+    ? Math.round((Date.now() - SECTION_ENTERED_AT)/1000) : null;
+  sb.from('bulk_marks').insert({
+    inspection_id: INSPECTION.id,
+    job_id: JOB.id,
+    user_id: ME.id,
+    phase: 'pre',
+    surface: sec.surface,
+    section: sec.section,
+    action,
+    items_marked: n,
+    section_total: sec.items.length,
+    seconds_in_section: secs
+  }).then(()=>{}, ()=>{});   // never block the tech on this
 }
 
 async function saveSection(){
@@ -1659,6 +1693,60 @@ function renderHistory(){
            <div class="jc">${esc(j.customer_name)}${ j.plate_vin ? ' · '+esc(j.plate_vin) : '' }</div>
            ${badge(j.status)}
          </button>`).join('')}</div>`;
+}
+
+/* ============================================================
+   ADMIN — bulk-mark audit
+   ============================================================ */
+async function screenAudit(){
+  setHeader('Bulk marking','Owner only',{back:true});
+  setProgress(null); setFooter(null);
+  btnBack.onclick = screenHome;
+  app.innerHTML = `<div class="loading">Loading…</div>`;
+
+  const [sum, recent] = await Promise.all([
+    sb.from('bulk_mark_summary').select('*').order('bulk_taps', {ascending:false}),
+    sb.from('bulk_marks').select('*, profiles(full_name), jobs(job_number, vehicle)')
+      .order('created_at', {ascending:false}).limit(40)
+  ]);
+
+  const rows = sum.data || [];
+  const log  = recent.data || [];
+
+  app.innerHTML = `
+    <p class="note">Every time a tech taps "Mark all remaining as Good" or
+      "Not equipped", it's recorded here with how long they'd been on that
+      section. Techs can't see this screen.</p>
+
+    <h2>By tech</h2>
+    ${ rows.length === 0
+      ? `<p class="note">Nothing logged yet.</p>`
+      : rows.map(r=>`
+        <div class="card">
+          <h3 style="color:var(--ink);font-size:16px;margin-bottom:8px">${esc(r.tech)}</h3>
+          <dl class="meta2">
+            <dt>Bulk taps</dt><dd>${r.bulk_taps}</dd>
+            <dt>Items auto-marked</dt><dd>${r.items_auto_marked}</dd>
+            <dt>Average time on section</dt><dd>${ r.avg_seconds_in_section ?? '—' }s</dd>
+            <dt>Fastest</dt><dd>${ r.fastest_seconds ?? '—' }s</dd>
+            <dt>Taps under 15s</dt>
+            <dd class="${ r.taps_under_15s > 0 ? 'flagnum':'' }">${r.taps_under_15s}</dd>
+          </dl>
+        </div>`).join('') }
+
+    <h2>Recent</h2>
+    ${ log.length === 0 ? `<p class="note">Nothing yet.</p>` :
+      log.map(b=>`
+        <div class="flagline">
+          <span class="dot ${ (b.seconds_in_section!=null && b.seconds_in_section < 15) ? 'poor':'average' }"></span>
+          <span style="flex:1">
+            ${esc(b.profiles ? b.profiles.full_name : '')} — ${esc(b.section)}
+            <br><span class="cd">${ b.action === 'all_good' ? 'All good' : 'Not equipped' }
+              · ${b.items_marked} of ${b.section_total}
+              · ${esc(b.jobs ? b.jobs.job_number : '')}</span>
+          </span>
+          <span class="cd">${ b.seconds_in_section != null ? b.seconds_in_section + 's' : '—' }</span>
+        </div>`).join('') }`;
 }
 
 boot();
