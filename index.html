@@ -214,9 +214,19 @@
   .photobar.mini .addmore{display:none;}
 
   .loading{text-align:center;padding:48px 0;color:var(--ink-soft);}
+  .scanwrap{display:flex;gap:8px;align-items:flex-start;}
+  .scanwrap input{flex:1;}
+  .scanbtn{
+    padding:13px 12px;border:1px solid var(--line);border-radius:9px;
+    background:#fff;font-size:18px;min-height:50px;min-width:50px;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .scanbtn:disabled{opacity:.45;}
+  .scanstatus{font-size:13px;color:var(--ink-soft);margin-top:5px;min-height:18px;}
 
   @media (prefers-reduced-motion:reduce){*{transition:none !important;}}
 </style>
+<script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 </head>
 <body>
 
@@ -574,7 +584,14 @@ function screenNewJob(){
       <label class="f"><span>Customer name</span><input id="f_name" autocomplete="off"></label>
       <label class="f"><span>Phone</span><input id="f_phone" type="tel" inputmode="tel" autocomplete="off"></label>
       <label class="f"><span>Vehicle</span><input id="f_vehicle" placeholder="2019 Silver Tahoe" autocomplete="off"></label>
-      <label class="f"><span>Plate or VIN</span><input id="f_plate" autocomplete="off"></label>
+      <label class="f"><span>Plate or VIN</span>
+        <div class="scanwrap">
+          <input id="f_plate" autocomplete="off" placeholder="Tap 📷 to scan">
+          <button class="scanbtn" id="scanBtn" onclick="scanText('f_plate','f_plate_status')"
+                  title="Scan plate or VIN with camera">📷</button>
+        </div>
+        <div class="scanstatus" id="f_plate_status"></div>
+      </label>
       <label class="f"><span>Service scope</span>
         <select id="f_package">
           <option value="">Select…</option>
@@ -2010,6 +2027,71 @@ async function doChangePassword(){
   document.getElementById('pwNew').value = '';
   document.getElementById('pwConfirm').value = '';
   btn.disabled = false; btn.textContent = 'Update password';
+}
+
+/* ============================================================
+   OCR — plate and VIN scanning via Tesseract.js
+   ============================================================ */
+let tWorker = null;
+
+async function getWorker(){
+  if(tWorker) return tWorker;
+  tWorker = await Tesseract.createWorker('eng', 1, {
+    logger: () => {}   // suppress progress logs
+  });
+  // Tune for plates and VINs: uppercase alphanumeric
+  await tWorker.setParameters({
+    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-',
+    preserve_interword_spaces: '0'
+  });
+  return tWorker;
+}
+
+async function scanText(inputId, statusId){
+  const btn    = document.getElementById('scanBtn');
+  const status = document.getElementById(statusId);
+  const input  = document.getElementById(inputId);
+
+  // Open camera via a hidden file input
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/*';
+  fileInput.capture = 'environment';
+
+  fileInput.onchange = async () => {
+    const file = fileInput.files && fileInput.files[0];
+    if(!file) return;
+
+    btn.disabled = true;
+    status.textContent = 'Reading…';
+
+    try {
+      // Compress before OCR — large photos slow Tesseract a lot
+      const blob = await compressImage(file, 1200, 0.85);
+      const url  = URL.createObjectURL(blob);
+
+      const worker = await getWorker();
+      const { data: { text } } = await worker.recognize(url);
+      URL.revokeObjectURL(url);
+
+      // Strip spaces and clean up
+      const cleaned = text.replace(/\s+/g,'').replace(/[^A-Z0-9-]/g,'').trim();
+
+      if(!cleaned){
+        status.textContent = 'Nothing readable — type it in manually.';
+      } else {
+        input.value = cleaned;
+        status.textContent = `Read: ${cleaned} — correct if needed.`;
+      }
+    } catch(e) {
+      status.textContent = 'Could not read — type it manually.';
+      console.error('OCR error:', e);
+    }
+
+    btn.disabled = false;
+  };
+
+  fileInput.click();
 }
 
 boot();
