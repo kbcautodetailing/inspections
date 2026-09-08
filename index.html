@@ -431,7 +431,9 @@ let ZONES = [];         // all zone_items
 let CODES = [];         // defect codes
 let JOB = null;         // active job
 let INSPECTION = null;  // active inspection row
-let SECTIONS = [];      // [{surface, section, optional, items:[]}]
+let ALL_SECTIONS = [];  // every section, unscoped — built once from the full zone list
+let SECTIONS = [];      // this job's sections, filtered by its service scope
+let SCOPED_ZONES = [];  // this job's zones, filtered by its service scope
 let SIDX = 0;           // current section index
 let STATE = {};         // zone_item_id -> {condition, effort, na, codes:[], note}
 
@@ -531,16 +533,32 @@ async function loadReference(){
   ]);
   ZONES = z.data || [];
   CODES = c.data || [];
-  // group into ordered sections
-  SECTIONS = [];
+  // group into ordered sections, once, unscoped
+  ALL_SECTIONS = [];
   let cur = null;
   for(const item of ZONES){
     if(!cur || cur.section !== item.section || cur.surface !== item.surface){
       cur = { surface:item.surface, section:item.section, optional:item.optional, items:[] };
-      SECTIONS.push(cur);
+      ALL_SECTIONS.push(cur);
     }
     cur.items.push(item);
   }
+}
+
+/* A job's "Service scope" decides which surfaces get inspected at all.
+   Exterior only -> skip interior sections entirely, not just note them N/A.
+   Interior only -> skip exterior. No selection or "Full" -> everything. */
+function surfacesForJob(job){
+  const scope = (job && job.package || '').toLowerCase();
+  if(scope.startsWith('exterior')) return ['exterior'];
+  if(scope.startsWith('interior')) return ['interior'];
+  return ['exterior','interior'];
+}
+
+function applyJobScope(job){
+  const allowed = surfacesForJob(job);
+  SECTIONS = ALL_SECTIONS.filter(s => allowed.includes(s.surface));
+  SCOPED_ZONES = ZONES.filter(z => allowed.includes(z.surface));
 }
 
 function screenLogin(){
@@ -626,6 +644,7 @@ async function openJob(id){
   const { data:job } = await sb.from('jobs').select('*').eq('id', id).single();
   if(!job) return;
   JOB = job;
+  applyJobScope(JOB);
   const { data:insps } = await sb.from('inspections').select('*').eq('job_id', id);
   const pre  = (insps||[]).find(i => i.phase === 'pre');
   const post = (insps||[]).find(i => i.phase === 'post');
@@ -735,6 +754,7 @@ async function createJob(e){
     return;
   }
   JOB = data;
+  applyJobScope(JOB);
   await startInspection();
 }
 
@@ -816,8 +836,8 @@ function sectionDoneCount(sec){
   return sec.items.filter(z => STATE[z.id] && (STATE[z.id].condition || STATE[z.id].na)).length;
 }
 function overallProgress(){
-  const done = ZONES.filter(z => STATE[z.id] && (STATE[z.id].condition || STATE[z.id].na)).length;
-  return Math.round(done / ZONES.length * 100);
+  const done = SCOPED_ZONES.filter(z => STATE[z.id] && (STATE[z.id].condition || STATE[z.id].na)).length;
+  return Math.round(done / SCOPED_ZONES.length * 100);
 }
 
 let SECTION_ENTERED_AT = 0;
@@ -1099,7 +1119,7 @@ async function screenSummary(){
 
   const counts = { good:0, average:0, poor:0, na:0 };
   const flagged = [];
-  for(const z of ZONES){
+  for(const z of SCOPED_ZONES){
     const s = STATE[z.id]; if(!s) continue;
     if(s.na){ counts.na++; continue; }
     if(s.condition){ counts[s.condition]++; }
@@ -1116,7 +1136,7 @@ async function screenSummary(){
       <div class="tile a"><b>${counts.average}</b><span>Average</span></div>
       <div class="tile p"><b>${counts.poor}</b><span>Poor</span></div>
     </div>
-    <p class="note">${counts.na} marked not applicable · ${ZONES.length} zones total</p>
+    <p class="note">${counts.na} marked not applicable · ${SCOPED_ZONES.length} zones total</p>
 
     ${ noPhoto > 0 ? `<div class="banner warn">
         <strong>${noPhoto} flagged item${noPhoto===1?'':'s'} ${noPhoto===1?'has':'have'} no photo.</strong>
@@ -1166,7 +1186,7 @@ async function finishInspection(){
   const btn = document.getElementById('finBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
 
-  const allRows = ZONES
+  const allRows = SCOPED_ZONES
     .filter(z => STATE[z.id] && (STATE[z.id].condition || STATE[z.id].na))
     .map(z => ({
       inspection_id: INSPECTION.id,
@@ -1425,7 +1445,7 @@ async function screenPostIntro(pre){
       <h3>Before you start</h3>
       <p class="note">The pre-inspection flagged <strong>${n}</strong>
         zone${n===1?'':'s'}. You'll only be asked about those — not all
-        ${ZONES.length}. Anything you find that wasn't flagged before gets added
+        ${SCOPED_ZONES.length}. Anything you find that wasn't flagged before gets added
         as a new issue.</p>
       <p class="note">Take the 12 after photos in Fieldd before you finish here.</p>
     </div>`;
@@ -1649,7 +1669,7 @@ function screenAddIssue(){
   btnBack.onclick = screenPost;
 
   const bySection = {};
-  for(const z of ZONES){ (bySection[z.section] ||= []).push(z); }
+  for(const z of SCOPED_ZONES){ (bySection[z.section] ||= []).push(z); }
 
   app.innerHTML = `
     <div class="card">
