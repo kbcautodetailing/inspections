@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1B3A7A">
 <title>KBC Inspections</title>
-<link rel="apple-touch-icon" href="logo.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="favicon-32.png">
 <style>
   :root{
     --paper:#f4f5f7;
@@ -13,13 +14,21 @@
     --ink:#14181c;
     --ink-soft:#5a636c;
     --line:#d7dbe0;
-    --navy:#1b3a7a;
-    --blue:#0b8fd6;
+    --black:#0a0d11;
+    --black-2:#12161c;
+    --navy:#0b7fc4;      /* brand blue, from the KBC badge */
+    --blue:#0b7fc4;
+    --blue-light:#4db4ee;
     --good:#1a8a3c;
     --avg:#d99400;
     --poor:#bd2a1d;
     --na:#7b848d;
     --tap:52px;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap');
+  .brandcaps{
+    font-family:'Oswald',-apple-system,sans-serif;
+    text-transform:uppercase;letter-spacing:.02em;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;}
@@ -37,24 +46,35 @@
   /* ---------- shell ---------- */
   .wrap{max-width:640px;margin:0 auto;padding:0 14px 120px;}
   .topbar{
-    position:sticky;top:0;z-index:40;background:var(--navy);color:#fff;
+    position:sticky;top:0;z-index:40;background:var(--black);color:#fff;
     padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+    border-bottom:1px solid rgba(11,127,196,.35);
   }
-  .topbar-inner{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:12px;}
-  .topbar h1{font-size:16px;margin:0;font-weight:700;letter-spacing:-.2px;flex:1;}
-  .topbar .sub{font-size:12.5px;opacity:.82;font-weight:500;margin-top:1px;}
+  .topbar-inner{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:11px;}
+  .topbar-mark{
+    width:30px;height:30px;border-radius:8px;flex-shrink:0;
+    border:1.5px solid rgba(77,180,238,.6);
+  }
+  .topbar h1{
+    font-family:'Oswald',-apple-system,sans-serif;text-transform:uppercase;
+    letter-spacing:.03em;font-size:15px;margin:0;font-weight:600;flex:1;color:#fff;
+  }
+  .topbar .sub{font-size:12px;opacity:.68;font-weight:500;margin-top:1px;color:#cfe6f5;}
   .iconbtn{
-    color:#fff;font-size:14px;font-weight:600;padding:8px 10px;border-radius:8px;
-    background:rgba(255,255,255,.14);
+    color:#cfe6f5;font-size:13.5px;font-weight:600;padding:8px 10px;border-radius:8px;
+    background:rgba(77,180,238,.12);border:1px solid rgba(77,180,238,.25);
   }
 
   /* ---------- progress ---------- */
-  .prog{height:5px;background:rgba(0,0,0,.14);}
-  .prog span{display:block;height:100%;background:var(--blue);transition:width .25s ease;}
+  .prog{height:4px;background:var(--black-2);}
+  .prog span{display:block;height:100%;background:linear-gradient(90deg,var(--navy),var(--blue-light));transition:width .25s ease;}
 
   /* ---------- cards & type ---------- */
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0;}
-  h2{font-size:21px;margin:22px 0 6px;letter-spacing:-.3px;}
+  h2{
+    font-family:'Oswald',-apple-system,sans-serif;text-transform:uppercase;
+    letter-spacing:.01em;font-size:19px;margin:22px 0 6px;font-weight:600;color:var(--ink);
+  }
   h3{font-size:15px;margin:0 0 10px;color:var(--ink-soft);font-weight:600;}
   p.note{color:var(--ink-soft);font-size:14.5px;margin:6px 0;}
 
@@ -79,10 +99,15 @@
 
   /* ---------- section header ---------- */
   .sect{
-    background:var(--navy);color:#fff;padding:11px 14px;border-radius:10px;
-    font-weight:700;font-size:16px;margin:18px 0 0;display:flex;justify-content:space-between;gap:10px;
+    background:var(--black);color:#fff;padding:12px 14px;border-radius:10px;
+    font-family:'Oswald',-apple-system,sans-serif;text-transform:uppercase;
+    letter-spacing:.02em;font-weight:600;font-size:15px;margin:18px 0 0;
+    display:flex;justify-content:space-between;gap:10px;
+    border:1px solid rgba(77,180,238,.3);
   }
-  .sect .cnt{font-weight:600;opacity:.8;font-size:13.5px;white-space:nowrap;}
+  .sect .cnt{font-weight:600;opacity:.75;font-size:13px;white-space:nowrap;
+              color:var(--blue-light);letter-spacing:normal;text-transform:none;
+              font-family:-apple-system,sans-serif;}
 
   /* ---------- inspection rows ---------- */
   .rows{background:#fff;border:1px solid var(--line);border-top:none;border-radius:0 0 12px 12px;overflow:hidden;}
@@ -213,7 +238,22 @@
   .photobar.mini.has .photobtn{padding:8px 11px;}
   .photobar.mini .addmore{display:none;}
 
-  .loading{text-align:center;padding:48px 0;color:var(--ink-soft);}
+  .loading{text-align:center;padding:36px 0;color:var(--ink-soft);}
+  .loading video{width:88px;height:88px;border-radius:16px;display:block;margin:0 auto 10px;}
+  .loading .ltext{font-size:13.5px;font-weight:600;}
+
+  .seal{
+    text-align:center;padding:22px 16px 18px;background:var(--black);
+    border-radius:14px;margin:16px 0;border:1px solid rgba(77,180,238,.3);
+  }
+  .seal img{width:104px;height:104px;filter:drop-shadow(0 0 18px rgba(11,127,196,.4));}
+  .seal .sealtitle{
+    font-family:'Oswald',-apple-system,sans-serif;text-transform:uppercase;
+    letter-spacing:.05em;color:#fff;font-size:15px;font-weight:600;margin-top:10px;
+  }
+  .seal .sealline{color:#8fb8d8;font-size:13px;margin-top:4px;}
+  .seal .sealtag{color:var(--blue-light);font-size:11.5px;font-style:italic;
+                  margin-top:8px;font-weight:600;letter-spacing:.02em;}
   .scanwrap{display:flex;gap:8px;align-items:flex-start;}
   .scanwrap input{flex:1;}
   .scanbtn{
@@ -224,6 +264,39 @@
   .scanbtn:disabled{opacity:.45;}
   .scanstatus{font-size:13px;color:var(--ink-soft);margin-top:5px;min-height:18px;}
 
+  body.login-mode{
+    background-color:var(--black);
+    background-image:
+      linear-gradient(30deg, rgba(11,127,196,.05) 12%, transparent 12.5%, transparent 87%, rgba(11,127,196,.05) 87.5%, rgba(11,127,196,.05)),
+      linear-gradient(150deg, rgba(11,127,196,.05) 12%, transparent 12.5%, transparent 87%, rgba(11,127,196,.05) 87.5%, rgba(11,127,196,.05)),
+      linear-gradient(30deg, rgba(11,127,196,.05) 12%, transparent 12.5%, transparent 87%, rgba(11,127,196,.05) 87.5%, rgba(11,127,196,.05)),
+      linear-gradient(150deg, rgba(11,127,196,.05) 12%, transparent 12.5%, transparent 87%, rgba(11,127,196,.05) 87.5%, rgba(11,127,196,.05));
+    background-size:44px 76px;
+    background-position:0 0, 0 0, 22px 38px, 22px 38px;
+  }
+  body.login-mode .topbar{display:none;}
+  body.login-mode .wrap{padding-top:0;}
+  .loginwrap{
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;padding:40px 20px calc(60px + env(safe-area-inset-bottom));
+    max-width:420px;margin:0 auto;
+  }
+  .loginbadge{width:150px;height:150px;margin-bottom:6px;
+              filter:drop-shadow(0 0 24px rgba(11,127,196,.35));}
+  .logintag{
+    color:#7fb8dd;font-size:12.5px;font-weight:600;letter-spacing:.08em;
+    text-transform:uppercase;margin-bottom:28px;
+    font-family:'Oswald',-apple-system,sans-serif;
+  }
+  .logincard{
+    width:100%;background:var(--black-2);border:1px solid rgba(77,180,238,.22);
+  }
+  .logincard label.f span{color:#8fa6b8;}
+  .logincard input{
+    background:#0d1218;border-color:rgba(77,180,238,.25);color:#fff;
+  }
+  .logincard input:focus{outline-color:var(--blue-light);border-color:var(--blue-light);}
+
   @media (prefers-reduced-motion:reduce){*{transition:none !important;}}
 </style>
 <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
@@ -232,6 +305,7 @@
 
 <div class="topbar">
   <div class="topbar-inner">
+    <img src="icon-192.png" alt="" class="topbar-mark">
     <div style="flex:1">
       <h1 id="tbTitle">KBC Inspections</h1>
       <div class="sub" id="tbSub"></div>
@@ -365,6 +439,28 @@ const EFFORT_DEFAULT = { average:'standard', poor:'extended' };
 const EFFORT_LABEL   = { minimal:'Minimal', standard:'Standard', extended:'Extended' };
 
 /* ---------- helpers ---------- */
+function sealHTML(phase, stamp){
+  const label = phase === 'pre' ? 'Pre-Inspection Locked' : 'Post-Inspection Locked';
+  return `
+    <div class="seal">
+      <img src="logo.png" alt="KBC Auto Detailing">
+      <div class="sealtitle">${esc(label)}</div>
+      <div class="sealline">${esc(JOB.job_number)} · ${esc(RUNNER)}</div>
+      <div class="sealline">${esc(new Date().toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}</div>
+      <div class="sealtag">Driven by every detail.</div>
+    </div>`;
+}
+
+function loaderHTML(text){
+  return `<div class="loading">
+    <video autoplay loop muted playsinline poster="loader-poster.jpg">
+      <source src="loader.webm" type="video/webm">
+      <source src="loader.mp4" type="video/mp4">
+    </video>
+    <div class="ltext">${esc(text||'Loading\u2026')}</div>
+  </div>`;
+}
+
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -421,6 +517,7 @@ async function boot(){
     setFooter(`<button class="btn ghost" onclick="signOut()">Sign out</button>`);
     return;
   }
+  document.body.classList.remove('login-mode');
   ME = profile;
   RUNNER = profile.full_name || '';
   await loadReference();
@@ -447,15 +544,19 @@ async function loadReference(){
 }
 
 function screenLogin(){
-  setHeader('KBC Inspections','Sign in to continue');
+  document.body.classList.add('login-mode');
+  setHeader('','', {});
   setProgress(null); setFooter(null);
   app.innerHTML = `
-    <div class="card" style="margin-top:24px">
-      <h3>Sign in</h3>
-      <div id="loginMsg"></div>
-      <label class="f"><span>Email</span><input id="email" type="email" autocomplete="username" inputmode="email"></label>
-      <label class="f"><span>Password</span><input id="pw" type="password" autocomplete="current-password"></label>
-      <button class="btn primary" id="doLogin">Sign in</button>
+    <div class="loginwrap">
+      <img src="logo.png" alt="KBC Auto Detailing" class="loginbadge">
+      <div class="logintag">Vehicle inspection system</div>
+      <div class="card logincard">
+        <div id="loginMsg"></div>
+        <label class="f"><span>Email</span><input id="email" type="email" autocomplete="username" inputmode="email"></label>
+        <label class="f"><span>Password</span><input id="pw" type="password" autocomplete="current-password"></label>
+        <button class="btn primary" id="doLogin">Sign in</button>
+      </div>
     </div>`;
   document.getElementById('doLogin').onclick = async (e) => {
     const btn = e.target; btn.disabled = true; btn.textContent = 'Signing in…';
@@ -485,7 +586,7 @@ async function screenHome(){
                 : ME.role === 'manager' ? ' · Manager' : '';
   setHeader('KBC Inspections', ME.full_name + roleTag, {out:true});
   setProgress(null);
-  app.innerHTML = `<div class="loading">Loading jobs…</div>`;
+  app.innerHTML = loaderHTML('Loading jobs\u2026');
   setFooter(`
     ${ isManager() ? `<button class="btn ghost" onclick="screenMore()">More</button>` : '' }
     ${ isManager() && !isAdmin() ? '' : '' }
@@ -1101,9 +1202,8 @@ async function commitPre(stamp){
   }).eq('id', JOB.id));
 
   app.innerHTML = `
-    ${banner('Pre-inspection complete and locked.','ok')}
+    ${sealHTML('pre', stamp)}
     <div class="card">
-      <h3>${esc(JOB.job_number)}</h3>
       <p class="note">${esc(JOB.vehicle)} — ${esc(JOB.customer_name)}</p>
       <p class="note">${esc(stamp)}</p>
       <p class="note">Take the 12 before photos in Fieldd, then start the job.</p>
@@ -1692,9 +1792,8 @@ async function commitPost(stamp){
   }).eq('id', JOB.id));
 
   app.innerHTML = `
-    ${banner('Post-inspection complete and locked.','ok')}
+    ${sealHTML('post', stamp)}
     <div class="card">
-      <h3>${esc(JOB.job_number)}</h3>
       <p class="note">${esc(JOB.vehicle)} — ${esc(JOB.customer_name)}</p>
       <p class="note">${esc(stamp)}</p>
       <p class="note">Make sure the 12 after photos are in Fieldd.</p>
@@ -1765,7 +1864,7 @@ async function screenHistory(){
     <label class="f" style="margin-top:14px"><span>Search</span>
       <input id="histQ" placeholder="Customer, vehicle, plate, or job number"
              autocomplete="off" autocorrect="off"></label>
-    <div id="histOut"><div class="loading">Loading…</div></div>`;
+    <div id="histOut">${loaderHTML('Loading history\u2026')}</div>`;
 
   const { data } = await sb.from('jobs')
     .select('id, job_number, customer_name, vehicle, plate_vin, status, created_at')
@@ -1805,7 +1904,7 @@ async function screenAudit(){
   setHeader('Bulk marking','Owner only',{back:true});
   setProgress(null); setFooter(null);
   btnBack.onclick = screenHome;
-  app.innerHTML = `<div class="loading">Loading…</div>`;
+  app.innerHTML = loaderHTML();
 
   const [sum, recent] = await Promise.all([
     sb.from('bulk_mark_summary').select('*').order('bulk_taps', {ascending:false}),
@@ -1885,7 +1984,7 @@ async function screenTeam(){
   setHeader('Team','Access and roles',{back:true});
   setProgress(null); setFooter(null);
   btnBack.onclick = screenMore;
-  app.innerHTML = `<div class="loading">Loading…</div>`;
+  app.innerHTML = loaderHTML();
 
   const { data, error } = await sb.from('profiles')
     .select('*').order('role').order('full_name');
