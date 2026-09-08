@@ -384,7 +384,7 @@ function compressImage(file, maxPx=1400, quality=0.7){
 let TEAM_CACHE = [];
 async function loadTeamCache(){
   if(TEAM_CACHE.length) return;
-  const { data } = await sb.from('profiles').select('id, full_name, active');
+  const { data } = await sb.from('profiles').select('id, full_name, active, role');
   TEAM_CACHE = data || [];
 }
 
@@ -745,11 +745,15 @@ function screenWhoseJob(phase){
   setHeader('Who is running this?', JOB.job_number + ' · ' + JOB.vehicle, {back:true});
   setProgress(null);
   btnBack.onclick = screenHome;
-  const others = TEAM_CACHE.filter(t => t.active !== false);
+  // Defaults to whoever is signed in, whatever their role — they're the one
+  // holding the phone. The swap list below is techs only: an owner or manager
+  // isn't a valid stand-in for a walkaround, so they're not offered as one.
+  RUNNER = ME.full_name || RUNNER;
+  const others = TEAM_CACHE.filter(t => t.active !== false && t.role === 'tech');
   app.innerHTML = `
     <div class="card">
-      <p class="note">This name goes on the report. Change it if someone else is
-        doing the walkaround on your phone.</p>
+      <p class="note">This name goes on the report. Defaults to you — change it only
+        if someone else is doing the walkaround on your phone.</p>
       <div class="chips" id="whoChips">
         ${ others.map(t=>`<button class="chip ${ t.full_name === RUNNER ? 'on':'' }"
             data-name="${esc(t.full_name)}">${esc(t.full_name)}</button>`).join('') }
