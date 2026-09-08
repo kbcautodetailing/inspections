@@ -227,6 +227,7 @@
       <div class="sub" id="tbSub"></div>
     </div>
     <button class="iconbtn hidden" id="btnBack">Back</button>
+    <button class="iconbtn hidden" id="btnSettings">⚙</button>
     <button class="iconbtn hidden" id="btnOut">Sign out</button>
   </div>
 </div>
@@ -362,6 +363,7 @@ function setHeader(title, sub, opts={}){
   tbSub.textContent = sub || '';
   btnBack.classList.toggle('hidden', !opts.back);
   btnOut.classList.toggle('hidden', !opts.out);
+  btnSettings.classList.toggle('hidden', !opts.out);
 }
 function setFooter(html){
   if(!html){ footbar.classList.add('hidden'); footIn.innerHTML=''; return; }
@@ -463,6 +465,7 @@ function screenLogin(){
 
 async function signOut(){ await sb.auth.signOut(); location.reload(); }
 btnOut.onclick = signOut;
+document.getElementById('btnSettings').onclick = screenSettings;
 
 /* ============================================================
    HOME
@@ -1927,6 +1930,86 @@ async function setRole(id, role){
     sb.from('profiles').update({ role }).eq('id', id));
   if(error){ alert(error.message); return; }
   t.role = role; renderTeam();
+}
+
+/* ============================================================
+   SETTINGS
+   ============================================================ */
+function screenSettings(){
+  setHeader('Settings', ME.full_name, {back:true, out:true});
+  setProgress(null); setFooter(null);
+  btnBack.onclick = screenHome;
+  app.innerHTML = `
+    <div class="joblist" style="margin-top:14px">
+      <button class="job" onclick="screenChangePassword()">
+        <div class="jv">Change password</div>
+        <div class="jc">Update your login password</div>
+      </button>
+    </div>`;
+}
+
+function screenChangePassword(){
+  setHeader('Change password', ME.full_name, {back:true});
+  setProgress(null); setFooter(null);
+  btnBack.onclick = screenSettings;
+  app.innerHTML = `
+    <div class="card" style="margin-top:14px">
+      <div id="pwMsg"></div>
+      <label class="f"><span>Current password</span>
+        <input id="pwCurrent" type="password" autocomplete="current-password"></label>
+      <label class="f"><span>New password</span>
+        <input id="pwNew" type="password" autocomplete="new-password"></label>
+      <label class="f"><span>Confirm new password</span>
+        <input id="pwConfirm" type="password" autocomplete="new-password"></label>
+      <button class="btn primary" id="pwBtn" onclick="doChangePassword()">
+        Update password</button>
+    </div>`;
+}
+
+async function doChangePassword(){
+  const current = document.getElementById('pwCurrent').value;
+  const newPw   = document.getElementById('pwNew').value;
+  const confirm = document.getElementById('pwConfirm').value;
+  const msg     = document.getElementById('pwMsg');
+  const btn     = document.getElementById('pwBtn');
+
+  if(!current || !newPw || !confirm){
+    msg.innerHTML = banner('Fill in all three fields.'); return;
+  }
+  if(newPw.length < 8){
+    msg.innerHTML = banner('New password must be at least 8 characters.'); return;
+  }
+  if(newPw !== confirm){
+    msg.innerHTML = banner('New passwords don’t match.'); return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Updating…';
+
+  // Re-authenticate first to verify the current password
+  const { data:{ session } } = await sb.auth.getSession();
+  const email = session.user.email;
+  const { error:signInErr } = await sb.auth.signInWithPassword({
+    email, password: current
+  });
+  if(signInErr){
+    msg.innerHTML = banner('Current password is incorrect.');
+    btn.disabled = false; btn.textContent = 'Update password';
+    return;
+  }
+
+  // Now update to the new password
+  const { error:updateErr } = await sb.auth.updateUser({ password: newPw });
+  if(updateErr){
+    msg.innerHTML = banner(updateErr.message);
+    btn.disabled = false; btn.textContent = 'Update password';
+    return;
+  }
+
+  msg.innerHTML = banner('Password updated.', 'ok');
+  document.getElementById('pwCurrent').value = '';
+  document.getElementById('pwNew').value = '';
+  document.getElementById('pwConfirm').value = '';
+  btn.disabled = false; btn.textContent = 'Update password';
 }
 
 boot();
